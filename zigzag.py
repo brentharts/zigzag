@@ -11,17 +11,18 @@ else:
 
 ZIG = os.path.join(_thisdir, 'zig-linux-x86_64-0.13.0/zig')
 
-if not os.path.isfile(ZIG):
-	if not os.path.isfile('zig-linux-x86_64-0.13.0.tar.xz'):
-		cmd = 'wget -c https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz'
+if __name__=='__main__':
+	if not os.path.isfile(ZIG):
+		if not os.path.isfile('zig-linux-x86_64-0.13.0.tar.xz'):
+			cmd = 'wget -c https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz'
+			print(cmd)
+			subprocess.check_call(cmd.split())
+		cmd = 'tar -xvf zig-linux-x86_64-0.13.0.tar.xz'
 		print(cmd)
 		subprocess.check_call(cmd.split())
-	cmd = 'tar -xvf zig-linux-x86_64-0.13.0.tar.xz'
-	print(cmd)
-	subprocess.check_call(cmd.split())
 
-ZIG_VER = subprocess.check_output([ZIG, 'version']).decode('utf-8')
-print('zig version:', ZIG_VER)
+	ZIG_VER = subprocess.check_output([ZIG, 'version']).decode('utf-8')
+	print('zig version:', ZIG_VER)
 
 
 TEST = r'''
@@ -64,7 +65,7 @@ def test_wasm( freestanding=True):
 
 	os.system('ls -l /tmp/*.wasm')
 
-JS_API = '''
+JS_API_HEADER = '''
 function make_environment(e){
 	return new Proxy(e,{
 		get(t,p,r) {
@@ -85,11 +86,15 @@ function cstr_by_ptr(m,p){
 	const b=new Uint8Array(m,p,l);
 	return new TextDecoder().decode(b)
 }
+'''
 
-class api {
+JS_API_PROXY = '''
 	proxy(){
 		return make_environment(this)
 	}
+'''
+
+JS_API_RESET = '''
 	reset(wasm,id,bytes){
 		this.elts=[];
 		this.wasm=wasm;
@@ -108,6 +113,9 @@ class api {
 			window.requestAnimationFrame(f)
 		});
 	}
+'''
+
+JS_API = JS_API_HEADER + 'class api {' + JS_API_PROXY + JS_API_RESET + '''
 
 	rect(x,y,w,h, r,g,b,a){
 		this.ctx.fillStyle='rgba('+r+','+g+','+b+','+a+')';
@@ -315,75 +323,76 @@ if __name__=='__main__':
 		sys.exit()
 
 ## in blender ##
-import math, mathutils
-from random import random, uniform, choice
+if bpy:
+	import math, mathutils
+	from random import random, uniform, choice
 
-MAX_SCRIPTS_PER_OBJECT = 8
+	MAX_SCRIPTS_PER_OBJECT = 8
 
-for i in range(MAX_SCRIPTS_PER_OBJECT):
-	setattr(
-		bpy.types.Object,
-		"zig_script" + str(i),
-		bpy.props.PointerProperty(name="script%s" % i, type=bpy.types.Text),
-	)
-	setattr(
-		bpy.types.Object,
-		"zig_script%s_disable" %i,
-		bpy.props.BoolProperty(name="disable"),
-	)
+	for i in range(MAX_SCRIPTS_PER_OBJECT):
+		setattr(
+			bpy.types.Object,
+			"zig_script" + str(i),
+			bpy.props.PointerProperty(name="script%s" % i, type=bpy.types.Text),
+		)
+		setattr(
+			bpy.types.Object,
+			"zig_script%s_disable" %i,
+			bpy.props.BoolProperty(name="disable"),
+		)
 
-bpy.types.Object.zig_hide = bpy.props.BoolProperty( name="hidden on spawn")
-
-
-@bpy.utils.register_class
-class ZigObjectPanel(bpy.types.Panel):
-	bl_idname = "OBJECT_PT_Zig_Object_Panel"
-	bl_label = "Zig Object Options"
-	bl_space_type = "PROPERTIES"
-	bl_region_type = "WINDOW"
-	bl_context = "object"
-
-	def draw(self, context):
-		if not context.active_object: return
-		ob = context.active_object
-
-		self.layout.label(text="Attach Zig Scripts")
-		foundUnassignedScript = False
-		for i in range(MAX_SCRIPTS_PER_OBJECT):
-			hasProperty = (
-				getattr(ob, "zig_script" + str(i)) != None
-			)
-			if hasProperty or not foundUnassignedScript:
-				row = self.layout.row()
-				row.prop(ob, "zig_script" + str(i))
-				row.prop(ob, "zig_script%s_disable"%i)
-			if not foundUnassignedScript:
-				foundUnassignedScript = not hasProperty
+	bpy.types.Object.zig_hide = bpy.props.BoolProperty( name="hidden on spawn")
 
 
+	@bpy.utils.register_class
+	class ZigObjectPanel(bpy.types.Panel):
+		bl_idname = "OBJECT_PT_Zig_Object_Panel"
+		bl_label = "Zig Object Options"
+		bl_space_type = "PROPERTIES"
+		bl_region_type = "WINDOW"
+		bl_context = "object"
 
-@bpy.utils.register_class
-class ZigExport(bpy.types.Operator):
-	bl_idname = "zig.export_wasm"
-	bl_label = "Zig Export WASM"
-	@classmethod
-	def poll(cls, context):
-		return True
-	def execute(self, context):
-		build_wasm(context.world)
-		return {"FINISHED"}
+		def draw(self, context):
+			if not context.active_object: return
+			ob = context.active_object
+
+			self.layout.label(text="Attach Zig Scripts")
+			foundUnassignedScript = False
+			for i in range(MAX_SCRIPTS_PER_OBJECT):
+				hasProperty = (
+					getattr(ob, "zig_script" + str(i)) != None
+				)
+				if hasProperty or not foundUnassignedScript:
+					row = self.layout.row()
+					row.prop(ob, "zig_script" + str(i))
+					row.prop(ob, "zig_script%s_disable"%i)
+				if not foundUnassignedScript:
+					foundUnassignedScript = not hasProperty
 
 
-@bpy.utils.register_class
-class ZigWorldPanel(bpy.types.Panel):
-	bl_idname = "WORLD_PT_ZigWorld_Panel"
-	bl_label = "Zig Export"
-	bl_space_type = "PROPERTIES"
-	bl_region_type = "WINDOW"
-	bl_context = "world"
 
-	def draw(self, context):
-		self.layout.operator("zig.export_wasm", icon="CONSOLE")
+	@bpy.utils.register_class
+	class ZigExport(bpy.types.Operator):
+		bl_idname = "zig.export_wasm"
+		bl_label = "Zig Export WASM"
+		@classmethod
+		def poll(cls, context):
+			return True
+		def execute(self, context):
+			build_wasm(context.world)
+			return {"FINISHED"}
+
+
+	@bpy.utils.register_class
+	class ZigWorldPanel(bpy.types.Panel):
+		bl_idname = "WORLD_PT_ZigWorld_Panel"
+		bl_label = "Zig Export"
+		bl_space_type = "PROPERTIES"
+		bl_region_type = "WINDOW"
+		bl_context = "world"
+
+		def draw(self, context):
+			self.layout.operator("zig.export_wasm", icon="CONSOLE")
 
 
 def safename(ob):
