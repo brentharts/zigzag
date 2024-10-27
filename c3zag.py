@@ -93,6 +93,13 @@ float[] indices = {
 
 fn void main() @extern("main") @wasm {
 	gl_init();
+	gl_enable("DEPTH_TEST");
+	gl_depth_func("LESS");
+	int buff = gl_new_buffer();
+	gl_bind_buffer(buff);
+
+	//int cube_size = cube_data.len * float.sizeof;
+	gl_buffer_data(buff, cube_data.len, cube_data);
 }
 
 
@@ -100,6 +107,12 @@ fn void main() @extern("main") @wasm {
 
 WASM_MINI_GL = '''
 extern fn void gl_init();
+extern fn void gl_enable(char *ptr);
+extern fn void gl_depth_func(char *ptr);
+extern fn int  gl_new_buffer();
+extern fn void gl_bind_buffer(int idx);
+extern fn void gl_buffer_data(int idx, int sz, float *ptr);
+
 '''
 
 JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
@@ -108,14 +121,65 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 		this.wasm=wasm;
 		this.canvas=document.getElementById(id);
 		this.gl=this.canvas.getContext('webgl');
+		this.bufs=[];
+		this.vs=[];
+		this.fs=[];
+		this.progs=[];
 		this.wasm.instance.exports.main();
 	}
 
 	gl_init() {
-		window.alert("hello window init");
 		this.gl.clearColor(1,0,0, 1);
 		this.gl.clear(this.gl.COLOR_BUFFER_BIT);
 	}
+
+	gl_enable(ptr){
+		const key = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
+		console.log("gl enable:", key);
+		this.gl.enable(this.gl[key]);
+	}
+
+	gl_depth_func(ptr){
+		const key = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
+		console.log("gl depthFunc:", key);
+		this.gl.depthFunc(this.gl[key]);
+	}
+	gl_new_buffer(){
+		return this.bufs.push(this.gl.createBuffer())-1;
+	}
+	gl_bind_buffer(i){
+		const b=this.bufs[i];
+		console.log("bind buffer:", b);
+		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,b);
+	}
+	gl_buffer_data(i, sz, ptr){
+		const b=this.bufs[i];
+		console.log("buffer data:", b);
+		const arr = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW);
+	}
+	gl_new_vshader(ptr){
+		const s = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
+		console.log('new vertex shader', s);
+		return this.vs.push(this.gl.createShader(this.gl.VERTEX_SHADER,s))-1;
+	}
+	gl_new_fshader(ptr){
+		const s = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
+		console.log('new fragment shader', s);
+		return this.fs.push(this.gl.createShader(this.gl.FRAGMENT_SHADER,s))-1;
+	}
+	gl_new_program(){
+		return this.progs.push(this.gl.createProgram())-1;
+	}
+	gl_attach_vshader(a,b){
+		const prog = this.progs[a];
+		this.gl.attachShader(prog, this.vs[b]);
+	}
+	gl_attach_fshader(a,b){
+		const prog = this.progs[a];
+		this.gl.attachShader(prog, this.fs[b]);
+	}
+
 }
 new api();
 '''
