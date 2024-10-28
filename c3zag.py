@@ -1,17 +1,19 @@
 #!/usr/bin/python3
-import os, sys, subprocess, base64, webbrowser
+import os, sys, subprocess, base64, webbrowser, zipfile
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 sys.path.append(_thisdir)
 import zigzag
 
 
 C3 = '/usr/local/bin/c3c'
+GZIP = 'gzip'
 
 islinux=iswindows=c3gz=c3zip=None
 if sys.platform == 'win32':
 	BLENDER = 'C:/Program Files/Blender Foundation/Blender 4.2/blender.exe'
-	c3zip = 'https://github.com/c3lang/c3c/releases/download/latest/c3-windows.zip'
+	c3zip = 'https://github.com/c3lang/c3c/releases/download/v0.6.3/c3-windows.zip'
 	C3 = os.path.join(_thisdir,'c3/c3c.exe')
+	GZIP = os.path.abspath(os.path.join(_thisdir,'gzip.exe'))
 	iswindows=True
 elif sys.platform == 'darwin':
 	BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
@@ -34,20 +36,26 @@ if not os.path.isfile(C3):
 				print(cmd)
 				subprocess.check_call(cmd.split())
 			elif c3zip and iswindows:
+				if os.path.isfile('c3-windows.zip') and len(open('c3-windows.zip','rb').read())==0:
+					os.unlink('c3-windows.zip')
 				if not os.path.isfile('c3-windows.zip'):
-					cmd = ['C:/Windows/System32/curl.exe', '-o', 'c3-windows.zip', c3zip]
-					print(cmd)
+					cmd = ['C:/Windows/System32/curl.exe', '-L', '-o', 'c3-windows.zip', c3zip]
+					print(' '.join(cmd))
 					subprocess.check_call(cmd)
+				with zipfile.ZipFile('c3-windows.zip', 'r') as zip_ref:
+					zip_ref.extractall(_thisdir)
 			elif c3zip:
 				if not os.path.isfile('c3-macos.zip'):
-					cmd = ['curl', '-o', 'c3-macos.zip', c3zip]
+					cmd = ['curl', '-L', '-o', 'c3-macos.zip', c3zip]
 					print(cmd)
 					subprocess.check_call(cmd)
+				with zipfile.ZipFile('c3-macos.zip', 'r') as zip_ref:
+					zip_ref.extractall(_thisdir)
 
-		if islinux:
+		if iswindows:
+			C3 = os.path.abspath('./c3-windows-Release/c3c.exe')
+		else:
 			C3 = os.path.abspath('./c3/c3c')
-		elif iswindows:
-			C3 = os.path.abspath('./c3/c3c.exe')
 
 print('c3c:', C3)
 assert os.path.isfile(C3)
@@ -364,7 +372,7 @@ def c3_compile(c3, name='test-c3'):
 def test_wasm():
 	wasm = c3_compile(WASM_MINI_GL + WASM_TEST)
 
-	cmd = ['gzip', '--keep', '--force', '--verbose', '--best', wasm]
+	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', wasm]
 	print(cmd)
 	subprocess.check_call(cmd)
 	wa = open(wasm,'rb').read()
@@ -373,7 +381,7 @@ def test_wasm():
 
 	jtmp = '/tmp/c3api.js'
 	open(jtmp,'w').write(zigzag.JS_API_HEADER + JS_MINI_GL)
-	cmd = ['gzip', '--keep', '--force', '--verbose', '--best', jtmp]
+	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', jtmp]
 	print(cmd)
 	subprocess.check_call(cmd)
 	js = open(jtmp+'.gz','rb').read()
