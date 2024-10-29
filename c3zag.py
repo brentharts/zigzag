@@ -188,6 +188,10 @@ fn void main() @extern("main") @wasm {
 '''
 
 WASM_MINI_GL = '''
+def Entry = fn void();
+extern fn void js_set_entry(Entry entry);
+
+
 extern fn void gl_init(int w, int h);
 extern fn void gl_enable(char *ptr);
 extern fn void gl_depth_func(char *ptr);
@@ -221,9 +225,26 @@ extern fn void gl_viewport(int x, int y, int w, int h);
 
 extern fn void gl_uniform_mat4fv(int loc, float *mat);
 extern fn void gl_draw_triangles(int len);
+
+extern fn float js_sin(float a);
+extern fn float js_cos(float a);
+
 '''
 
 JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
+	js_set_entry(a){
+		this.entryFunction=this.wasm.instance.exports.__indirect_function_table.get(a);
+		const f=(ts)=>{
+			this.dt=(ts-this.prev)/1000;
+			this.prev=ts;
+			this.entryFunction();
+			window.requestAnimationFrame(f)
+		};
+		window.requestAnimationFrame((ts)=>{
+			this.prev=ts;
+			window.requestAnimationFrame(f)
+		});
+	}
 
 	reset(wasm,id,bytes){
 		this.wasm=wasm;
@@ -360,6 +381,13 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	gl_draw_triangles(n){
 		console.log('draw triangles:', n);
 		this.gl.drawElements(this.gl.TRIANGLES, n, this.gl.UNSIGNED_SHORT, 0)
+	}
+
+	js_sin(a){
+		return Math.sin(a)
+	}
+	js_cos(a){
+		return Math.cos(a)
 	}
 
 }
@@ -602,16 +630,96 @@ SHADER_POST = '''
 
 '''
 
+HELPER_FUNCS = '''
+fn void rotateZ(float *m, float angle) {
+	float c = js_cos(angle);
+	float s = js_sin(angle);
+	float mv0 = m[0];
+	float mv4 = m[4];
+	float mv8 = m[8];
+
+	m[0] = c*m[0]-s*m[1];
+	m[4] = c*m[4]-s*m[5];
+	m[8] = c*m[8]-s*m[9];
+
+	m[1]=c*m[1]+s*mv0;
+	m[5]=c*m[5]+s*mv4;
+	m[9]=c*m[9]+s*mv8;
+}
+fn void rotateY(float *m, float angle) {
+	float c = js_cos(angle);
+	float s = js_sin(angle);
+	float mv0 = m[0];
+	float mv4 = m[4];
+	float mv8 = m[8];
+
+	m[0] = c*m[0]+s*m[2];
+	m[4] = c*m[4]+s*m[6];
+	m[8] = c*m[8]+s*m[10];
+
+	m[2] = c*m[2]-s*mv0;
+	m[6] = c*m[6]-s*mv4;
+	m[10] = c*m[10]-s*mv8;
+}
+'''
+
+
+def get_scripts(ob):
+	scripts = []
+	for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
+		if getattr(ob, "c3_script%s_disable" %i): continue
+		txt = getattr(ob, "c3_script" + str(i))
+		if txt: scripts.append(txt)
+	return scripts
+
+def has_scripts(ob):
+	for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
+		if getattr(ob, "c3_script%s_disable" %i): continue
+		txt = getattr(ob, "c3_script" + str(i))
+		if txt: return True
+	return False
+
+
 def blender_to_c3(world):
 	data = [
 		SHADER_HEADER,
 		DEBUG_SHADER,
 		DEBUG_CAMERA,
+		HELPER_FUNCS,
 	]
 	setup = []
 	draw = []
 	for ob in bpy.data.objects:
+		if ob.hide_get(): continue
+		sname = zigzag.safename(ob)
+
 		if ob.type=='MESH':
+
+			if has_scripts(ob):
+				#draw.append('	self = objects[%s];' % idx)
+
+				props = {}
+				for prop in ob.keys():
+					if prop.startswith( ('_', 'zig_', 'c3_') ): continue
+					val = ob[prop]
+					if type(val) is str:
+						data.append('char* %s_%s = "%s";' %(prop,sname, val))
+					else:
+						data.append('float %s_%s = %s;' %(prop,sname, val))
+					props[prop] = ob[prop]
+
+				prop_updates = {}
+				for txt in get_scripts(ob):
+					s = txt.as_string()
+					for prop in props:
+						if 'self.'+prop in s:
+							s = s.replace('self.'+prop, '%s_%s'%(prop,sname))
+							prop_updates[prop]=True
+					if 'self.matrix' in s:
+						s = s.replace('self.matrix', '%s_mat' % sname)
+					draw.append( s )
+
+
 			a,b,c = mesh_to_c3(ob)
 			data  += a
 			setup += b
@@ -626,7 +734,8 @@ def blender_to_c3(world):
 	for ln in setup:
 		main.append('\t' + ln)
 	main.append(SHADER_POST)
-	main.append('update();')
+	#main.append('update();')
+	main.append('js_set_entry(&update);')
 	main.append('}')
 
 	update = [
@@ -706,6 +815,8 @@ def mesh_to_c3(ob):
 		'gl_bind_buffer(%s_vbuff);' % name,
 		'gl_bind_buffer(%s_cbuff);' % name,
 
+		#'rotateZ(%s_mat, 15.0);' % name,
+
 		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
 		'gl_bind_buffer_element(%s_ibuff);' % name,
 		'gl_draw_triangles( INDICES_%s.len );' % sname,
@@ -713,5 +824,27 @@ def mesh_to_c3(ob):
 
 	return data, setup, draw
 
+EXAMPLE1 = '''
+rotateY( self.matrix, self.my_prop );
+'''
+
+def test_scene():
+	a = bpy.data.texts.new(name='example1.zig')
+	a.from_string(EXAMPLE1)
+
+	ob = bpy.data.objects['Cube']
+	ob.hide_set(True)
+
+	bpy.ops.mesh.primitive_monkey_add()
+	ob = bpy.context.active_object
+	ob.c3_script0 = a
+	ob['my_prop'] = 0.01
+
+	ob.rotation_euler.x = -math.pi/2
+	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+
+
+
 if __name__=='__main__':
+	test_scene()
 	build_wasm(bpy.data.worlds[0])
