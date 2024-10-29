@@ -202,6 +202,9 @@ extern fn void gl_bind_buffer_element(int idx);
 
 extern fn void gl_buffer_data(int idx, int sz, float *ptr);
 extern fn void gl_buffer_u16(int idx, int sz, ushort *ptr);
+extern fn void gl_buffer_f16(int idx, int sz, float16 *ptr);
+extern fn void gl_buffer_f8(int idx, int sz, char *ptr);
+
 extern fn void gl_buffer_element(int idx, int sz, ushort *ptr);
 
 extern fn int gl_new_program();
@@ -301,6 +304,18 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 		console.log("buffer data:", b);
 		const arr = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
 		this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
+	}
+	gl_buffer_f16(i, sz, ptr){
+		const b=this.bufs[i];
+		console.log("buffer data:", b);
+		const arr = new Float16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arr), this.gl.STATIC_DRAW)
+	}
+	gl_buffer_f8(i, sz, ptr){
+		const b=this.bufs[i];
+		console.log("buffer data:", b);
+		const arr = new Uint8Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arr), this.gl.STATIC_DRAW)
 	}
 
 	gl_buffer_element(i, sz, ptr){
@@ -554,6 +569,29 @@ class C3WorldPanel(bpy.types.Panel):
 	def draw(self, context):
 		self.layout.operator("c3.export_wasm", icon="CONSOLE")
 
+def minjs(js):
+	o = []
+	for ln in js.splitlines():
+		if ln.strip().startswith(('//', 'console.log')):
+			continue
+		o.append(ln)
+	o = '\n'.join(o)
+	return o.replace('\t', '').replace('\n', '')
+
+def wasm_opt(wasm):
+	o = wasm.replace('.wasm', '.opt.wasm')
+	cmd = ['wasm-opt', '-o',o, '-Oz', wasm]
+	print(cmd)
+	subprocess.check_call(cmd)
+	return o
+
+def c3_wasm_strip(wasm):
+	a = b'\x00,\x0ftarget_features\x02+\x0fmutable-globals+\x08sign-ext'
+	b = open(wasm,'rb').read()
+	if b.endswith(a):
+		c = b[:-len(a)]
+		print('c3 wasm stripped bytes:', len(a) )
+		open(wasm,'wb').write(c)
 
 SERVER_PROC = None
 def build_wasm( world ):
@@ -563,6 +601,9 @@ def build_wasm( world ):
 	o = '\n'.join(o)
 	print(o)
 	wasm = c3_compile(WASM_MINI_GL + o)
+	c3_wasm_strip(wasm)
+	if sys.platform != 'win32':
+		wasm = wasm_opt(wasm)
 
 	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', wasm]
 	print(cmd)
@@ -572,7 +613,9 @@ def build_wasm( world ):
 	b = base64.b64encode(w).decode('utf-8')
 
 	jtmp = '/tmp/c3api.js'
-	open(jtmp,'w').write(zigzag.JS_API_HEADER + JS_MINI_GL)
+	jsapi = zigzag.JS_API_HEADER + JS_MINI_GL
+	jsapi = minjs(jsapi)
+	open(jtmp,'w').write(jsapi)
 	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', jtmp]
 	print(cmd)
 	subprocess.check_call(cmd)
@@ -679,11 +722,35 @@ def has_scripts(ob):
 		if txt: return True
 	return False
 
+BLENDER_SHADER = '''
+const char* VERTEX_SHADER = `
+attribute vec3 position;
+uniform mat4 Pmat;
+uniform mat4 Vmat;
+uniform mat4 Mmat;
+attribute vec3 color;
+varying vec3 vColor;
+void main(void){
+	gl_Position = Pmat*Vmat*Mmat*vec4(position, 1.);
+	vColor = color;
+}
+`;
+
+const char* FRAGMENT_SHADER = `
+precision mediump float;
+varying vec3 vColor;
+void main(void) {
+	gl_FragColor = vec4(vColor*(1.0/255.0), 1.0);
+}
+`;
+
+'''
+
 
 def blender_to_c3(world):
 	data = [
 		SHADER_HEADER,
-		DEBUG_SHADER,
+		BLENDER_SHADER,
 		DEBUG_CAMERA,
 		HELPER_FUNCS,
 	]
@@ -774,14 +841,20 @@ def mesh_to_c3(ob):
 			indices.append(str(p.vertices[0]))
 
 
-	colors = [str(random()) for i in range(len(verts))]
+	#colors = [str(random()) for i in range(len(verts))]
+	colors = [str( int(random()*255) ) for i in range(len(verts))]
+
 	mat = []
 	for vec in ob.matrix_local:
 		mat += [str(v) for v in vec]
 	data = [
-		'const float[]  VERTS_%s={%s};' %(sname, ','.join(verts)),
+		#'const float[]  VERTS_%s={%s};' %(sname, ','.join(verts)),
+		#'const float[]  COLORS_%s={%s};' %(sname, ','.join(colors)),
+
+		'const float16[]  VERTS_%s={%s};' %(sname, ','.join(verts)),  ## 16bit float verts
+		'const char[]  COLORS_%s={%s};' %(sname, ','.join(colors)),  ## 8bit per-chan color
+
 		'const ushort[] INDICES_%s={%s};' %(sname, ','.join(indices)),
-		'const float[]  COLORS_%s={%s};' %(sname, ','.join(colors)),
 		'int %s_vbuff;' % name,
 		'int %s_ibuff;' % name,
 		'int %s_cbuff;' % name,
@@ -791,7 +864,8 @@ def mesh_to_c3(ob):
 	setup = [
 		'%s_vbuff = gl_new_buffer();' % name,
 		'gl_bind_buffer(%s_vbuff);' % name,
-		'gl_buffer_data(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
+		#'gl_buffer_data(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
+		'gl_buffer_f16(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
 
 		'gl_vertex_attr_pointer(posloc, 3);',
 		'gl_enable_vertex_attr_array(posloc);',
@@ -799,7 +873,9 @@ def mesh_to_c3(ob):
 
 		'%s_cbuff = gl_new_buffer();' % name,
 		'gl_bind_buffer(%s_cbuff);' % name,
-		'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+		#'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+		#'gl_buffer_f16(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+		'gl_buffer_f8(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 
 		'gl_vertex_attr_pointer(clrloc, 3);',
 		'gl_enable_vertex_attr_array(clrloc);',
