@@ -1,25 +1,55 @@
 #!/usr/bin/python3
-import os, sys, subprocess, base64, webbrowser
+import os, sys, subprocess, base64, webbrowser, zipfile
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 
+GZIP = 'gzip'
+
+zigzip=zigxz=None
 if sys.platform == 'win32':
 	BLENDER = 'C:/Program Files/Blender Foundation/Blender 4.2/blender.exe'
+	if not os.path.isfile(BLENDER):
+		BLENDER = 'C:/Program Files/Blender Foundation/Blender 3.6/blender.exe'
+
+	zigzip = 'https://ziglang.org/download/0.13.0/zig-windows-x86_64-0.13.0.zip'
+	ZIG = os.path.join(_thisdir, 'zig-windows-x86_64-0.13.0/zig.exe')
+	GZIP = os.path.abspath(os.path.join(_thisdir,'gzip.exe'))
+	if not os.path.isdir('/tmp'): os.mkdir('/tmp')
 elif sys.platform == 'darwin':
 	BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
+	zigxz = 'https://ziglang.org/download/0.13.0/zig-macos-aarch64-0.13.0.tar.xz'
+	ZIG = os.path.join(_thisdir, 'zig-macos-aarch64-0.13.0/zig')
 else:
 	BLENDER = 'blender'
-
-ZIG = os.path.join(_thisdir, 'zig-linux-x86_64-0.13.0/zig')
+	zigxz = 'https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz'
+	ZIG = os.path.join(_thisdir, 'zig-linux-x86_64-0.13.0/zig')
 
 if __name__=='__main__':
 	if not os.path.isfile(ZIG):
-		if not os.path.isfile('zig-linux-x86_64-0.13.0.tar.xz'):
-			cmd = 'wget -c https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz'
+		if sys.platform=='win32':
+			if not os.path.isfile('zig-windows-x86_64-0.13.0.zip'):
+				cmd = 'curl -L -o zig-windows-x86_64-0.13.0.zip %s' % zigzip
+				print(cmd)
+				subprocess.check_call(cmd)
+			with zipfile.ZipFile('zig-windows-x86_64-0.13.0.zip', 'r') as zip_ref:
+				zip_ref.extractall(_thisdir)
+
+		elif sys.platform=='darwin':
+			if not os.path.isfile('zig-macos-aarch64-0.13.0.tar.xz'):
+				cmd = 'curl -L -o zig-macos-aarch64-0.13.0.tar.xz %s' % zigxz
+				print(cmd)
+				subprocess.check_call(cmd)
+			cmd = 'tar -xvf zig-macos-aarch64-0.13.0.tar.xz'
 			print(cmd)
 			subprocess.check_call(cmd.split())
-		cmd = 'tar -xvf zig-linux-x86_64-0.13.0.tar.xz'
-		print(cmd)
-		subprocess.check_call(cmd.split())
+
+		else:
+			if not os.path.isfile('zig-linux-x86_64-0.13.0.tar.xz'):
+				cmd = 'wget -c %s' % zigxz
+				print(cmd)
+				subprocess.check_call(cmd.split())
+			cmd = 'tar -xvf zig-linux-x86_64-0.13.0.tar.xz'
+			print(cmd)
+			subprocess.check_call(cmd.split())
 
 	ZIG_VER = subprocess.check_output([ZIG, 'version']).decode('utf-8')
 	print('zig version:', ZIG_VER)
@@ -62,8 +92,8 @@ def test_wasm( freestanding=True):
 	cmd += [ '-O', 'ReleaseSmall', '-target', target,  tmp]
 	print(cmd)
 	subprocess.check_call(cmd, cwd='/tmp')
-
-	os.system('ls -l /tmp/*.wasm')
+	if sys.platform!='win32':
+		os.system('ls -l /tmp/*.wasm')
 
 JS_API_HEADER = '''
 function make_environment(e){
@@ -170,11 +200,9 @@ JS_API = JS_API_HEADER + 'class api {' + JS_API_PROXY + JS_API_RESET + '''
 		this.ctx.stroke()
 	}
 
-
-
 }
 
-var $=new api();
+new api();
 '''
 
 JS_DECOMP = '''
@@ -236,9 +264,10 @@ def build(zig, memsize=4):
 	os.system('ls -l /tmp/*.wasm')
 
 	wasm = '/tmp/%s.wasm' % name
-	wasm = wasm_opt(wasm)
+	if sys.platform!='win32':
+		wasm = wasm_opt(wasm)
 
-	cmd = ['gzip', '--keep', '--force', '--verbose', '--best', wasm]
+	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', wasm]
 	print(cmd)
 	subprocess.check_call(cmd)
 	wa = open(wasm,'rb').read()
@@ -247,7 +276,7 @@ def build(zig, memsize=4):
 
 	jtmp = '/tmp/zigapi.js'
 	open(jtmp,'w').write(JS_API)
-	cmd = ['gzip', '--keep', '--force', '--verbose', '--best', jtmp]
+	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', jtmp]
 	print(cmd)
 	subprocess.check_call(cmd)
 	js = open(jtmp+'.gz','rb').read()
@@ -269,11 +298,12 @@ def build(zig, memsize=4):
 	open(out,'w').write('\n'.join(o))
 	webbrowser.open(out)
 
-	cmd = ['zip', '-9', 'zigzag-preview.zip', 'zigzag-preview.html']
-	print(cmd)
-	subprocess.check_call(cmd)
-	os.system('ls -l zigzag-preview.*')
-	os.system('ls -l /tmp/*.wasm')
+	if sys.platform!='win32':
+		cmd = ['zip', '-9', 'zigzag-preview.zip', 'zigzag-preview.html']
+		print(cmd)
+		subprocess.check_call(cmd)
+		os.system('ls -l zigzag-preview.*')
+		os.system('ls -l /tmp/*.wasm')
 
 
 try:
@@ -302,9 +332,10 @@ if __name__=='__main__':
 		sys.exit()
 	elif '--test-wasm-canvas' in sys.argv:
 		build(TEST_WASM_CANVAS)
+		sys.exit()
 	elif bpy:
 		pass
-	else:
+	elif (sys.platform in ('win32','darwin') and os.path.isfile(BLENDER)) or sys.platform=='linux':
 		cmd = [BLENDER]
 		for arg in sys.argv:
 			if arg.endswith('.blend'):
@@ -320,6 +351,11 @@ if __name__=='__main__':
 			cmd += exargs
 		print(cmd)
 		subprocess.check_call(cmd)
+		sys.exit()
+	else:
+		print("WARN: blender not found")
+		print("blender versions supported: 3.6 and 4.2")
+		test_wasm()
 		sys.exit()
 
 ## in blender ##
