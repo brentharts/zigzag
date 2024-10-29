@@ -444,6 +444,7 @@ def get_scripts(ob):
 
 def has_scripts(ob):
 	for i in range(MAX_SCRIPTS_PER_OBJECT):
+		if getattr(ob, "zig_script%s_disable" %i): continue
 		txt = getattr(ob, "zig_script" + str(i))
 		if txt: return True
 	return False
@@ -616,7 +617,7 @@ def blender_to_zig(world, init_data_in_groups=True):
 
 				props = {}
 				for prop in ob.keys():
-					if prop.startswith( ('_', 'zig_') ): continue
+					if prop.startswith( ('_', 'zig_', 'c3_') ): continue
 					val = ob[prop]
 					if type(val) is str:
 						#head.append('const %s_%s : [*:0]const u8 = "%s";' %(prop,sname, val))  ## in c3 const was smaller, in zig var is smaller?
@@ -669,7 +670,7 @@ def blender_to_zig(world, init_data_in_groups=True):
 
 					props = {}
 					for prop in ob.keys():
-						if prop.startswith( ('_', 'zig_') ): continue
+						if prop.startswith( ('_', 'zig_', 'c3_') ): continue
 						val = ob[prop]
 						if type(val) is str:
 							head.append('var %s_%s : [*:0]const u8 = "%s";' %(prop,sname, val))
