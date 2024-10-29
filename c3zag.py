@@ -4,11 +4,18 @@ _thisdir = os.path.split(os.path.abspath(__file__))[0]
 sys.path.append(_thisdir)
 import zigzag
 
+HELP='''
+run: python c3zag.py [.blend]
+
+options:
+	--test runs simple WASM test without blender
+
+'''
 
 C3 = '/usr/local/bin/c3c'
 GZIP = 'gzip'
 
-islinux=iswindows=c3gz=c3zip=None
+islinux=iswindows=isapple=c3gz=c3zip=None
 if sys.platform == 'win32':
 	BLENDER = 'C:/Program Files/Blender Foundation/Blender 4.2/blender.exe'
 	c3zip = 'https://github.com/c3lang/c3c/releases/download/v0.6.3/c3-windows.zip'
@@ -18,6 +25,7 @@ if sys.platform == 'win32':
 elif sys.platform == 'darwin':
 	BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
 	c3zip = 'https://github.com/c3lang/c3c/releases/download/latest/c3-macos.zip'
+	isapple=True
 else:
 	BLENDER = 'blender'
 	c3gz = 'https://github.com/c3lang/c3c/releases/download/latest/c3-ubuntu-20.tar.gz'
@@ -60,8 +68,7 @@ if not os.path.isfile(C3):
 print('c3c:', C3)
 assert os.path.isfile(C3)
 
-
-WASM_TEST = '''
+DEBUG_SHADER = '''
 const char* VERTEX_SHADER = `
 attribute vec3 position;
 uniform mat4 Pmat;
@@ -82,6 +89,16 @@ void main(void) {
 	gl_FragColor = vec4(vColor, 1.0);
 }
 `;
+
+'''
+
+DEBUG_CAMERA = '''
+float[] proj_matrix = {1.3737387097273113,0,0,0,0,1.8316516129697482,0,0,0,0,-1.02020202020202,-1,0,0,-2.0202020202020203,0};
+float[] view_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+'''
+
+WASM_TEST = DEBUG_SHADER + DEBUG_CAMERA + '''
+float[] mov_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 
 
 float[] cube_data = {
@@ -108,9 +125,6 @@ float[] colors = {
 	0,1,0, 0,1,0, 0,1,0, 0,1,0
 };
 
-float[] proj_matrix = {1.3737387097273113,0,0,0,0,1.8316516129697482,0,0,0,0,-1.02020202020202,-1,0,0,-2.0202020202020203,0};
-float[] mov_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-float[] view_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 
 fn void main() @extern("main") @wasm {
 	view_matrix[14] = view_matrix[14] -6.0;  //zoom 
@@ -403,6 +417,298 @@ def test_wasm():
 	open(out,'w').write('\n'.join(o))
 	webbrowser.open(out)
 
+try:
+	import bpy
+except:
+	bpy = None
+
+
 
 if __name__=='__main__':
-	test_wasm()
+	if '--help' in sys.argv:
+		print(HELP)
+		subprocess.check_call([C3, '--version'])
+		sys.exit()
+	elif bpy:
+		pass
+	elif '--test' in sys.argv:
+		test_wasm()
+	elif (iswindows and os.path.isfile(BLENDER)) or (isapple and os.path.isfile(BLENDER)) or islinux:
+		cmd = [BLENDER]
+		for arg in sys.argv:
+			if arg.endswith('.blend'):
+				cmd.append(arg)
+				break
+		cmd +=['--python-exit-code', '1', '--python', __file__]
+		exargs = []
+		for arg in sys.argv:
+			if arg.startswith('--'):
+				exargs.append(arg)
+		if exargs:
+			cmd.append('--')
+			cmd += exargs
+		print(cmd)
+		subprocess.check_call(cmd)
+		sys.exit()
+
+	else:
+		print(HELP)
+		print('WARN: could not find blender')
+		test_wasm()
+		sys.exit()
+
+## in blender ##
+assert bpy
+import math, mathutils
+from random import random, uniform, choice
+
+for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
+	setattr(
+		bpy.types.Object,
+		"c3_script" + str(i),
+		bpy.props.PointerProperty(name="script%s" % i, type=bpy.types.Text),
+	)
+	setattr(
+		bpy.types.Object,
+		"c3_script%s_disable" %i,
+		bpy.props.BoolProperty(name="disable"),
+	)
+
+bpy.types.Object.c3_hide = bpy.props.BoolProperty( name="hidden on spawn")
+
+@bpy.utils.register_class
+class C3ObjectPanel(bpy.types.Panel):
+	bl_idname = "OBJECT_PT_C3_Object_Panel"
+	bl_label = "C3 Object Options"
+	bl_space_type = "PROPERTIES"
+	bl_region_type = "WINDOW"
+	bl_context = "object"
+
+	def draw(self, context):
+		if not context.active_object: return
+		ob = context.active_object
+
+		self.layout.label(text="Attach C3 Scripts")
+		foundUnassignedScript = False
+		for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
+			hasProperty = (
+				getattr(ob, "c3_script" + str(i)) != None
+			)
+			if hasProperty or not foundUnassignedScript:
+				row = self.layout.row()
+				row.prop(ob, "c3_script" + str(i))
+				row.prop(ob, "c3_script%s_disable"%i)
+			if not foundUnassignedScript:
+				foundUnassignedScript = not hasProperty
+
+@bpy.utils.register_class
+class C3Export(bpy.types.Operator):
+	bl_idname = "c3.export_wasm"
+	bl_label = "C3 Export WASM"
+	@classmethod
+	def poll(cls, context):
+		return True
+	def execute(self, context):
+		build_wasm(context.world)
+		return {"FINISHED"}
+
+
+@bpy.utils.register_class
+class C3WorldPanel(bpy.types.Panel):
+	bl_idname = "WORLD_PT_C3World_Panel"
+	bl_label = "C3 Export"
+	bl_space_type = "PROPERTIES"
+	bl_region_type = "WINDOW"
+	bl_context = "world"
+	def draw(self, context):
+		self.layout.operator("c3.export_wasm", icon="CONSOLE")
+
+
+SERVER_PROC = None
+def build_wasm( world ):
+	global SERVER_PROC
+	if SERVER_PROC: SERVER_PROC.kill()
+	o = blender_to_c3(world)
+	o = '\n'.join(o)
+	print(o)
+	wasm = c3_compile(WASM_MINI_GL + o)
+
+	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', wasm]
+	print(cmd)
+	subprocess.check_call(cmd)
+	wa = open(wasm,'rb').read()
+	w = open(wasm+'.gz','rb').read()
+	b = base64.b64encode(w).decode('utf-8')
+
+	jtmp = '/tmp/c3api.js'
+	open(jtmp,'w').write(zigzag.JS_API_HEADER + JS_MINI_GL)
+	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', jtmp]
+	print(cmd)
+	subprocess.check_call(cmd)
+	js = open(jtmp+'.gz','rb').read()
+	jsb = base64.b64encode(js).decode('utf-8')
+
+	o = [
+		'<html>',
+		'<body>',
+		'<canvas id="$"></canvas>',
+		'<script>', 
+		'var $0="%s"' % jsb,
+		'var $1="%s"' % b,
+		zigzag.JS_DECOMP,
+		'</script>',
+	]
+	out = 'blender-c3zag-preview.html'
+	open(out,'w').write('\n'.join(o))
+	webbrowser.open(out)
+
+SHADER_HEADER = '''
+int vs;
+int fs;
+int prog;
+
+int ploc;
+int vloc;
+int mloc;
+
+int posloc;
+int clrloc;
+
+'''
+
+SHADER_SETUP = '''
+	vs = gl_new_vshader(VERTEX_SHADER);
+	fs = gl_new_fshader(FRAGMENT_SHADER);
+
+	prog = gl_new_program();
+	gl_attach_vshader(prog, vs);
+	gl_attach_fshader(prog, fs);
+	gl_link_program( prog );
+
+	ploc = gl_get_uniform_location(prog, "Pmat");
+	vloc = gl_get_uniform_location(prog, "Vmat");
+	mloc = gl_get_uniform_location(prog, "Mmat");
+
+	posloc = gl_get_attr_location(prog, "position");
+	clrloc = gl_get_attr_location(prog, "color");
+
+'''
+
+SHADER_POST = '''
+	gl_use_program(prog);
+
+'''
+
+def blender_to_c3(world):
+	data = [
+		SHADER_HEADER,
+		DEBUG_SHADER,
+		DEBUG_CAMERA,
+	]
+	setup = []
+	draw = []
+	for ob in bpy.data.objects:
+		if ob.type=='MESH':
+			a,b,c = mesh_to_c3(ob)
+			data  += a
+			setup += b
+			draw  += c
+
+	main = [
+		'fn void main() @extern("main") @wasm {',
+		'	gl_init(800, 600);',
+		'	view_matrix[14] = view_matrix[14] -3.0;',
+		SHADER_SETUP,
+	]
+	for ln in setup:
+		main.append('\t' + ln)
+	main.append(SHADER_POST)
+	main.append('update();')
+	main.append('}')
+
+	update = [
+		'fn void update() @extern("update") @wasm {',
+		'	gl_enable("DEPTH_TEST");',
+		'	gl_depth_func("LEQUAL");',
+		'	gl_viewport(0,0,800,600);',
+		'	gl_clear(0.5,0.5,0.5, 1.0, 1.0);',
+		'	gl_uniform_mat4fv(ploc, proj_matrix);',
+		'	gl_uniform_mat4fv(vloc, view_matrix);',
+	]
+	for ln in draw:
+		update.append('\t'+ln)
+	update.append('}')
+
+	return data + update + main
+
+def mesh_to_c3(ob):
+	name = zigzag.safename(ob.data)
+	sname = name.upper()
+
+	verts = []
+	for v in ob.data.vertices:
+		verts.append(str(v.co.x))
+		verts.append(str(v.co.y))
+		verts.append(str(v.co.z))
+
+	indices = []
+	for p in ob.data.polygons:
+		indices.append(str(p.vertices[0]))
+		indices.append(str(p.vertices[1]))
+		indices.append(str(p.vertices[2]))
+		if len(p.vertices)==4:
+			indices.append(str(p.vertices[2]))
+			indices.append(str(p.vertices[3]))
+			indices.append(str(p.vertices[0]))
+
+
+	colors = [str(random()) for i in range(len(verts))]
+	mat = []
+	for vec in ob.matrix_local:
+		mat += [str(v) for v in vec]
+	data = [
+		'const float[]  VERTS_%s={%s};' %(sname, ','.join(verts)),
+		'const ushort[] INDICES_%s={%s};' %(sname, ','.join(indices)),
+		'const float[]  COLORS_%s={%s};' %(sname, ','.join(colors)),
+		'int %s_vbuff;' % name,
+		'int %s_ibuff;' % name,
+		'int %s_cbuff;' % name,
+		'float[] %s_mat={%s};' %(name,','.join(mat)),
+	]
+
+	setup = [
+		'%s_vbuff = gl_new_buffer();' % name,
+		'gl_bind_buffer(%s_vbuff);' % name,
+		'gl_buffer_data(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
+
+		'gl_vertex_attr_pointer(posloc, 3);',
+		'gl_enable_vertex_attr_array(posloc);',
+
+
+		'%s_cbuff = gl_new_buffer();' % name,
+		'gl_bind_buffer(%s_cbuff);' % name,
+		'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+
+		'gl_vertex_attr_pointer(clrloc, 3);',
+		'gl_enable_vertex_attr_array(clrloc);',
+
+
+		'%s_ibuff = gl_new_buffer();' % name,
+		'gl_bind_buffer_element(%s_ibuff);' % name,
+		'gl_buffer_element(%s_ibuff, INDICES_%s.len, INDICES_%s);' %(name, sname,sname),
+
+	]
+
+	draw = [
+		'gl_bind_buffer(%s_vbuff);' % name,
+		'gl_bind_buffer(%s_cbuff);' % name,
+
+		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
+		'gl_bind_buffer_element(%s_ibuff);' % name,
+		'gl_draw_triangles( INDICES_%s.len );' % sname,
+	]
+
+	return data, setup, draw
+
+if __name__=='__main__':
+	build_wasm(bpy.data.worlds[0])
