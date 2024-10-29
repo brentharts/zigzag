@@ -18,6 +18,9 @@ GZIP = 'gzip'
 islinux=iswindows=isapple=c3gz=c3zip=None
 if sys.platform == 'win32':
 	BLENDER = 'C:/Program Files/Blender Foundation/Blender 4.2/blender.exe'
+	if not os.path.isfile(BLENDER):
+		BLENDER = 'C:/Program Files/Blender Foundation/Blender 3.6/blender.exe'
+
 	c3zip = 'https://github.com/c3lang/c3c/releases/download/v0.6.3/c3-windows.zip'
 	C3 = os.path.join(_thisdir,'c3/c3c.exe')
 	GZIP = os.path.abspath(os.path.join(_thisdir,'gzip.exe'))
