@@ -9,6 +9,8 @@ run: python c3zag.py [.blend]
 
 options:
 	--test runs simple WASM test without blender
+	--Oz optimize for size
+	--icolor use indexed vertex colors
 
 '''
 
@@ -104,7 +106,7 @@ WASM_TEST = DEBUG_SHADER + DEBUG_CAMERA + '''
 float[] mov_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 
 
-float[] cube_data = {
+float16[] cube_data = {
 	-1,-1,-1, 1,-1,-1, 1, 1,-1, -1, 1,-1,
 	-1,-1, 1, 1,-1, 1, 1, 1, 1, -1, 1, 1,
 	-1,-1,-1, -1, 1,-1, -1, 1, 1, -1,-1, 1,
@@ -119,7 +121,7 @@ ushort[] indices = {
 	16,17,18, 16,18,19, 20,21,22, 20,22,23 
 };
 
-float[] colors = {
+float16[] colors = {
 	0.5,0.3,0.7, 0.5,0.3,0.7, 0.5,0.3,0.7, 0.5,0.3,0.7,
 	1,1,0.3, 1,1,0.3, 1,1,0.3, 1,1,0.3,
 	0,0,1, 0,0,1, 0,0,1, 0,0,1,
@@ -134,11 +136,11 @@ fn void main() @extern("main") @wasm {
 	gl_init(800, 600);
 	int vbuff = gl_new_buffer();
 	gl_bind_buffer(vbuff);
-	gl_buffer_data(vbuff, cube_data.len, cube_data);
+	gl_buffer_f16(vbuff, cube_data.len, cube_data);
 
 	int cbuff = gl_new_buffer();
 	gl_bind_buffer(cbuff);
-	gl_buffer_data(cbuff, colors.len, colors);
+	gl_buffer_f16(cbuff, colors.len, colors);
 
 	int ibuff = gl_new_buffer();
 	gl_bind_buffer_element(ibuff);
@@ -200,12 +202,13 @@ extern fn int  gl_new_buffer();
 extern fn void gl_bind_buffer(int idx);
 extern fn void gl_bind_buffer_element(int idx);
 
-extern fn void gl_buffer_data(int idx, int sz, float *ptr);
-extern fn void gl_buffer_u16(int idx, int sz, ushort *ptr);
+//extern fn void gl_buffer_data(int idx, int sz, float *ptr);
+//extern fn void gl_buffer_u16(int idx, int sz, ushort *ptr);
 extern fn void gl_buffer_f16(int idx, int sz, float16 *ptr);
 extern fn void gl_buffer_f8(int idx, int sz, char *ptr);
 
 extern fn void gl_buffer_element(int idx, int sz, ushort *ptr);
+//extern fn void gl_buffer_element(int idx, int sz, short *ptr);
 
 extern fn int gl_new_program();
 extern fn void gl_link_program(int prog);
@@ -264,47 +267,53 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	gl_init(w,h) {
 		this.canvas.width=w;
 		this.canvas.height=h;
-		this.gl.clearColor(1,0,0, 1);
-		this.gl.clear(this.gl.COLOR_BUFFER_BIT)
+		this.gl.viewport(0,0,w,h);
+		this.gl.enable(this.gl.DEPTH_TEST);
+		//this.gl.clearColor(1,0,0, 1);
+		//this.gl.clear(this.gl.COLOR_BUFFER_BIT)
 	}
 
-	gl_enable(ptr){
-		const key = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
-		console.log("gl enable:", key);
-		this.gl.enable(this.gl[key])
-	}
+	//gl_enable(ptr){
+	//	const key = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
+	//	//console.log("gl enable:", key);
+	//	this.gl.enable(this.gl[key])
+	//}
 
-	gl_depth_func(ptr){
-		const key = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
-		console.log("gl depthFunc:", key);
-		this.gl.depthFunc(this.gl[key])
-	}
+	//gl_depth_func(ptr){
+	//	const key = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
+	//	//console.log("gl depthFunc:", key);
+	//	this.gl.depthFunc(this.gl[key])
+	//}
+
 	gl_new_buffer(){
 		return this.bufs.push(this.gl.createBuffer())-1
 	}
+
 	gl_bind_buffer(i){
 		const b=this.bufs[i];
-		console.log("bind buffer:", b);
+		//console.log("bind buffer:", b);
 		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,b)
 	}
 	gl_bind_buffer_element(i){
 		const b=this.bufs[i];
-		console.log("bind buffer element:", b);
+		//console.log("bind buffer element:", b);
 		this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER,b)
 	}
 
-	gl_buffer_data(i, sz, ptr){
-		const b=this.bufs[i];
-		console.log("buffer data:", b);
-		const arr = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
-		this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
-	}
-	gl_buffer_u16(i, sz, ptr){
-		const b=this.bufs[i];
-		console.log("buffer data:", b);
-		const arr = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
-		this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
-	}
+	//gl_buffer_data(i, sz, ptr){
+	//	const b=this.bufs[i];
+	//	console.log("buffer data:", b);
+	//	const arr = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+	//	this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
+	//}
+
+	//gl_buffer_u16(i, sz, ptr){
+	//	const b=this.bufs[i];
+	//	console.log("buffer data:", b);
+	//	const arr = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+	//	this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
+	//}
+
 	gl_buffer_f16(i, sz, ptr){
 		const b=this.bufs[i];
 		console.log("buffer data:", b);
@@ -321,10 +330,29 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	gl_buffer_element(i, sz, ptr){
 		const b=this.bufs[i];
 		console.log("element buffer data:", b);
-		const arr = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
-		console.log(arr);
-		this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
+		const v = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		console.log(v);
+		var a=[];
+		for (var j=0;j<sz;j+=4){
+			//a.push(v[j],v[j+1],v[j+2]);
+
+			a.push(v[j]);
+			a.push(v[j+1]);
+			a.push(v[j+2]);
+
+			if(v[j+3]==65000)continue;
+			//if(!v[j+3])continue;
+
+			//a.push(v[j+2],v[j+3],v[j+0]);
+
+			a.push(v[j+2]);
+			a.push(v[j+3]);
+			a.push(v[j]);
+
+		}
+		this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(a), this.gl.STATIC_DRAW)
 	}
+
 
 	gl_new_vshader(ptr){
 		const c = cstr_by_ptr(this.wasm.instance.exports.memory.buffer,ptr);
@@ -385,16 +413,17 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 		this.gl.clearDepth(z);
 		this.gl.clear(this.gl.COLOR_BUFFER_BIT|this.gl.DEPTH_BUFFER_BIT)
 	}
-	gl_viewport(x,y,w,h){
-		this.gl.viewport(x,y,w,h)
-	}
+
+	//gl_viewport(x,y,w,h){
+	//	this.gl.viewport(x,y,w,h)
+	//}
 
 	gl_uniform_mat4fv(a,ptr){
 		const mat = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,16);
 		this.gl.uniformMatrix4fv(this.locs[a], false, mat)
 	}
 	gl_draw_triangles(n){
-		console.log('draw triangles:', n);
+		//console.log('draw triangles:', n);
 		this.gl.drawElements(this.gl.TRIANGLES, n, this.gl.UNSIGNED_SHORT, 0)
 	}
 
@@ -569,13 +598,37 @@ class C3WorldPanel(bpy.types.Panel):
 	def draw(self, context):
 		self.layout.operator("c3.export_wasm", icon="CONSOLE")
 
+
+mini_gl_const = {
+	'UNSIGNED_SHORT':5123,
+	'TRIANGLES':4,
+	'DEPTH_BUFFER_BIT':256, 
+	'COLOR_BUFFER_BIT':16384, 
+	'FLOAT':5126, 
+	'FRAGMENT_SHADER':35632, 
+	'VERTEX_SHADER':35633, 
+	'ARRAY_BUFFER':34962,
+	'STATIC_DRAW':35044,
+	'ELEMENT_ARRAY_BUFFER':34963,
+	'DEPTH_TEST':2929,
+}
+
 def minjs(js):
 	o = []
 	for ln in js.splitlines():
-		if ln.strip().startswith(('//', 'console.log')):
+		if '--debug' in sys.argv:
+			if ln.strip().startswith('//'):
+				continue
+		elif ln.strip().startswith(('//', 'console.log')):
 			continue
+
 		o.append(ln)
 	o = '\n'.join(o)
+	for glcon in mini_gl_const:
+		key = 'this.gl.%s' % glcon
+		if key in o:
+			o = o.replace(key, str(mini_gl_const[glcon]))
+
 	return o.replace('\t', '').replace('\n', '')
 
 def wasm_opt(wasm):
@@ -648,6 +701,7 @@ int mloc;
 int posloc;
 int clrloc;
 
+
 '''
 
 SHADER_SETUP = '''
@@ -659,12 +713,12 @@ SHADER_SETUP = '''
 	gl_attach_fshader(prog, fs);
 	gl_link_program( prog );
 
-	ploc = gl_get_uniform_location(prog, "Pmat");
-	vloc = gl_get_uniform_location(prog, "Vmat");
-	mloc = gl_get_uniform_location(prog, "Mmat");
+	ploc = gl_get_uniform_location(prog, "P");  // projection Pmat
+	vloc = gl_get_uniform_location(prog, "V");  // view matrix
+	mloc = gl_get_uniform_location(prog, "M");  // model matrix
 
-	posloc = gl_get_attr_location(prog, "position");
-	clrloc = gl_get_attr_location(prog, "color");
+	posloc = gl_get_attr_location(prog, "vp");  // vertex position
+	clrloc = gl_get_attr_location(prog, "vc");  // vertex color
 
 '''
 
@@ -724,23 +778,23 @@ def has_scripts(ob):
 
 BLENDER_SHADER = '''
 const char* VERTEX_SHADER = `
-attribute vec3 position;
-uniform mat4 Pmat;
-uniform mat4 Vmat;
-uniform mat4 Mmat;
-attribute vec3 color;
-varying vec3 vColor;
+attribute vec3 vp;
+uniform mat4 P;
+uniform mat4 V;
+uniform mat4 M;
+attribute vec3 vc;
+varying vec3 VC;
 void main(void){
-	gl_Position = Pmat*Vmat*Mmat*vec4(position, 1.);
-	vColor = color;
+	gl_Position=P*V*M*vec4(vp,1.);
+	VC=vc;
 }
 `;
 
 const char* FRAGMENT_SHADER = `
 precision mediump float;
-varying vec3 vColor;
-void main(void) {
-	gl_FragColor = vec4(vColor*(1.0/255.0), 1.0);
+varying vec3 VC;
+void main(void){
+	gl_FragColor=vec4(VC*(1.0/255.0),1.0);
 }
 `;
 
@@ -807,10 +861,10 @@ def blender_to_c3(world):
 
 	update = [
 		'fn void update() @extern("update") @wasm {',
-		'	gl_enable("DEPTH_TEST");',
-		'	gl_depth_func("LEQUAL");',
-		'	gl_viewport(0,0,800,600);',
-		'	gl_clear(0.5,0.5,0.5, 1.0, 1.0);',
+		#'	gl_enable("DEPTH_TEST");',
+		#'	gl_depth_func("LEQUAL");',
+		#'	gl_viewport(0,0,800,600);',
+		#'	gl_clear(0.5,0.5,0.5, 1.0, 1.0);',
 		'	gl_uniform_mat4fv(ploc, proj_matrix);',
 		'	gl_uniform_mat4fv(vloc, view_matrix);',
 	]
@@ -820,41 +874,262 @@ def blender_to_c3(world):
 
 	return data + update + main
 
-def mesh_to_c3(ob):
+def mesh_to_c3(ob, as_quads=True):
 	name = zigzag.safename(ob.data)
 	sname = name.upper()
 
+	data = []
+	colors = []
 	verts = []
+	r,g,b,a = ob.color
+	lightz = 0.5
+	lighty = 0.3
+
+	x,y,z = ob.data.vertices[0].co
+
+	icolors_map = {}
+	icolors = []
 	for v in ob.data.vertices:
 		verts.append(str(v.co.x))
 		verts.append(str(v.co.y))
 		verts.append(str(v.co.z))
 
-	indices = []
-	for p in ob.data.polygons:
-		indices.append(str(p.vertices[0]))
-		indices.append(str(p.vertices[1]))
-		indices.append(str(p.vertices[2]))
-		if len(p.vertices)==4:
-			indices.append(str(p.vertices[2]))
-			indices.append(str(p.vertices[3]))
-			indices.append(str(p.vertices[0]))
+		#shade = (v.normal.z+1) * 0.5
+		shade = v.normal.z
+		vr = r + (shade*lightz)
+		vg = g + (shade*lightz)
+		vb = b + (shade*lightz)
+
+		shade = v.normal.y
+		vr = r + (shade*lighty)
+		vg = g + (shade*lighty)
+		vb = b + (shade*lighty)
 
 
-	#colors = [str(random()) for i in range(len(verts))]
-	colors = [str( int(random()*255) ) for i in range(len(verts))]
+		if vr > 1: vr = 1
+		elif vr < 0: vr = 0
+		if vg > 1: vg = 1
+		elif vg < 0: vg = 0
+		if vb > 1: vb = 1
+		elif vb < 0: vb = 0
 
-	mat = []
-	for vec in ob.matrix_local:
-		mat += [str(v) for v in vec]
+		colors.append( str( int(vr*255)) )
+		colors.append( str( int(vg*255)) )
+		colors.append( str( int(vb*255)) )
+
+		mag = 2
+		key = (
+			int(round(vr,mag)*255),
+			int(round(vg,mag)*255),
+			int(round(vb,mag)*255)
+		)
+		if key not in icolors_map:
+			icolors_map[key] = len(icolors_map)
+
+		icolors.append(str(icolors_map[key]))
+
+
+	print(icolors)
+	print(icolors_map)
+	print('index colors map len=', len(icolors_map))
+
+	if '--rand-colors' in sys.argv:
+		#colors = [str(random()) for i in range(len(verts))]
+		colors = [str( int(random()*255) ) for i in range(len(verts))]
+		#colors = ['64' for i in range(len(verts))]
+
 	data = [
 		#'const float[]  VERTS_%s={%s};' %(sname, ','.join(verts)),
 		#'const float[]  COLORS_%s={%s};' %(sname, ','.join(colors)),
 
 		'const float16[]  VERTS_%s={%s};' %(sname, ','.join(verts)),  ## 16bit float verts
-		'const char[]  COLORS_%s={%s};' %(sname, ','.join(colors)),  ## 8bit per-chan color
+	]
 
+	if '--Oz' in sys.argv and '--icolor' in sys.argv:
+		rgbs = []
+		for key in icolors_map:
+			rgbs.append( '%s,%s,%s' % key )
+
+		data += [
+		'',
+		'char[%s]  colors_%s;' %(len(colors), name),  ## color map
+		'const char[] ICOLORS_%s={%s};' %(sname, ','.join(icolors)),
+		'const char[%s] COLOR_MAP_%s={%s};' %(len(icolors_map)*3, sname, ', '.join(rgbs)),
+		'',
+		]
+
+	else:
+		data += [
+		'const char[]  COLORS_%s={%s};' %(sname, ','.join(colors)),  ## 8bit per-chan color
+		'',
+		]
+
+
+	unpak = []
+	indices = []
+	num_i = 0
+	i_off = 0
+	if '--Oz' in sys.argv and len(ob.data.vertices) < 512:
+		groups = {
+			32  : [],
+			64  : [],
+			128 : [],
+			256 : [],
+			512 : [],
+
+		}
+		tris = []
+		for p in ob.data.polygons:
+			if len(p.vertices)==3:
+				a,b,c = p.vertices
+				#tris.append( (a,b,c,0) )
+				tris.append( (a,b,c,65000) )
+				num_i += 3
+			elif len(p.vertices)==4:
+				a,b,c,d = p.vertices
+				num_i += 6
+				ok=False
+				for mx in groups:
+					if a < mx and b < mx and c < mx and d < mx:
+						groups[mx].append( (a,b,c,d) )
+						ok=True
+						break
+				if not ok:
+					raise RuntimeError('oh')
+		for mx in groups:
+			print('bit group:%s len=%s'%(mx, len(groups[mx])))
+
+		sub256 = []
+
+		rem = []
+		for vals in groups[512]:
+			reloc = True
+			for idx in vals:
+				if idx < 256:
+					reloc = False
+					break
+			if reloc:
+				a,b,c,d = vals
+				sub256.append((a-256,b-256,c-256,d-256))
+				rem.append(vals)
+
+		print('512-256 group:', len(sub256))
+		for vals in rem:
+			groups[512].remove(vals)
+		print('512 group len=:', len(groups[512]))
+		for mx in groups: groups[mx].sort()
+		sub256.sort()
+
+		arr = []
+		for mx in groups:
+			if mx==512: continue
+			arr += [str(v).replace('(','').replace(')','').replace(' ','') for v in groups[mx]]
+			#print(groups[mx])
+
+		data.append('const char[] IPAK8_%s={%s};' %(sname, ','.join(arr)))
+
+		g = groups.pop(512)
+		arr = [str(v).replace('(','').replace(')','').replace(' ','') for v in g]
+
+		if tris:
+			for v in tris:
+				arr.append(str(v).replace('(','\n').replace(')','').replace(' ',''))
+
+		data.append('const ushort[] IPAK16_%s={%s};' % (sname, ','.join(arr)))
+
+
+		arr = [str(v).replace('(','').replace(')','').replace(' ','') for v in sub256]
+		data.append('const char[] IPAK8S_%s={%s};' % (sname, ','.join(arr)))
+
+
+		unpak += [
+			'int uidx=0;',
+			'for (int i=0; i<IPAK8_%s.len; i++){' % sname,
+			'	triangles_%s[uidx++] = IPAK8_%s[i];' % (name, sname),
+			'}',
+			'for (int i=0; i<IPAK16_%s.len; i++){' % sname,
+			'	triangles_%s[uidx++] = IPAK16_%s[i];' % (name, sname),
+			'}',
+			'for (int i=0; i<IPAK8S_%s.len; i++){' % sname,
+			'	triangles_%s[uidx++] = IPAK8S_%s[i]+256;' % (name, sname),
+			'}',
+
+		]
+
+	elif as_quads:
+		inc = 16
+		for p in ob.data.polygons:
+			if len(p.vertices)==4:
+				x,y,z,w = p.vertices
+				dy = y-x
+				dz = z-x
+				dw = w-x
+
+				dx = x-inc
+				dy = y-inc
+				dz = z-inc
+				dw = w-inc
+
+				ddy = dy - dx
+				ddz = dz - dx
+				ddw = dw - dx
+
+				indices.append(str(x+i_off))
+				if 1:
+					indices.append(str(y+i_off))
+					indices.append(str(z+i_off))
+
+					###indices.append(str(p.vertices[2]))
+					indices.append(str(w+i_off) + '//%s %s %s %s//%s %s %s\n'%(dx, dy,dz,dw, ddy, ddz, ddw) )
+					###indices.append(str(p.vertices[0]))
+
+				num_i += 6
+			elif len(p.vertices)==3:
+				indices.append(str(p.vertices[0]+i_off))
+				indices.append(str(p.vertices[1]+i_off))
+				indices.append(str(p.vertices[2]+i_off))
+
+				#indices.append(str(p.vertices[2]))
+				#num_i += 6
+
+				indices.append(str(65000))
+				#indices.append('0')
+				num_i += 3
+
+			else:
+				raise RuntimeError('TODO polygon len verts: %s' % len(p.vertices))
+
+			inc += 1
+
+	else:
+		for p in ob.data.polygons:
+			indices.append(str(p.vertices[0]))
+			indices.append(str(p.vertices[1]))
+			indices.append(str(p.vertices[2]))
+			num_i += 3
+			if len(p.vertices)==4:
+				indices.append(str(p.vertices[2]))
+				indices.append(str(p.vertices[3]))
+				indices.append(str(p.vertices[0]))
+				num_i += 3
+
+	if unpak:
+		data += [
+		'ushort[%s] triangles_%s;' %(num_i,name),
+		]
+	else:
+		data += [
 		'const ushort[] INDICES_%s={%s};' %(sname, ','.join(indices)),
+		#'const short[] INDICES_%s={%s};' %(sname, ','.join(indices)),
+		#'const ushort[%s] INDICES_%s;' %(len(indices),sname),
+		]
+
+	mat = []
+	for vec in ob.matrix_local:
+		mat += [str(v) for v in vec]
+
+
+	data += [
 		'int %s_vbuff;' % name,
 		'int %s_ibuff;' % name,
 		'int %s_cbuff;' % name,
@@ -875,17 +1150,46 @@ def mesh_to_c3(ob):
 		'gl_bind_buffer(%s_cbuff);' % name,
 		#'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 		#'gl_buffer_f16(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+	]
+	if '--Oz' in sys.argv and '--icolor' in sys.argv:
+		setup += [
+		'int ii=0;',
+		'for (int i=0; i<ICOLORS_%s.len; i++){' %sname ,
+		'	int clr_index = ICOLORS_%s[i]*3;' % sname,
+		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index];' %(name, sname),
+		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+1];' %(name, sname),
+		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+2];' %(name, sname),
+		'}',
+		'gl_buffer_f8(%s_cbuff, colors_%s.len, &colors_%s);' %(name, name,name),
+		]
+
+	else:
+		setup += [
 		'gl_buffer_f8(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 
+		]
+
+	setup += [
 		'gl_vertex_attr_pointer(clrloc, 3);',
 		'gl_enable_vertex_attr_array(clrloc);',
 
 
 		'%s_ibuff = gl_new_buffer();' % name,
 		'gl_bind_buffer_element(%s_ibuff);' % name,
-		'gl_buffer_element(%s_ibuff, INDICES_%s.len, INDICES_%s);' %(name, sname,sname),
-
 	]
+
+	if unpak:
+		setup += unpak
+		setup.append(
+		'gl_buffer_element(%s_ibuff, triangles_%s.len, &triangles_%s);' %(name, name, name)
+		)
+
+	else:
+		setup += [
+			'gl_buffer_element(%s_ibuff, INDICES_%s.len, INDICES_%s);' %(name, sname,sname),
+		]
+		
+
 
 	draw = [
 		'gl_bind_buffer(%s_vbuff);' % name,
@@ -895,7 +1199,8 @@ def mesh_to_c3(ob):
 
 		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
 		'gl_bind_buffer_element(%s_ibuff);' % name,
-		'gl_draw_triangles( INDICES_%s.len );' % sname,
+		#'gl_draw_triangles( INDICES_%s.len );' % sname,
+		'gl_draw_triangles( %s );' % num_i,
 	]
 
 	return data, setup, draw
@@ -915,6 +1220,7 @@ def test_scene():
 	ob = bpy.context.active_object
 	ob.c3_script0 = a
 	ob['my_prop'] = 0.01
+	ob.color = [.7,.5,.5, 1.0]
 
 	ob.rotation_euler.x = -math.pi/2
 	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
