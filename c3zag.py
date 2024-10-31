@@ -33,6 +33,8 @@ elif sys.platform == 'darwin':
 	isapple=True
 else:
 	BLENDER = 'blender'
+	if os.path.isfile(os.path.expanduser('~/Downloads/blender-4.2.1-linux-x64/blender')):
+		BLENDER = os.path.expanduser('~/Downloads/blender-4.2.1-linux-x64/blender')
 	c3gz = 'https://github.com/c3lang/c3c/releases/download/latest/c3-ubuntu-20.tar.gz'
 	islinux=True
 
@@ -534,6 +536,13 @@ if __name__=='__main__':
 
 ## in blender ##
 assert bpy
+
+## gone in default blender 4.2 :(
+#bpy.ops.preferences.addon_enable(module="mesh_auto_mirror")
+import mesh_auto_mirror
+mesh_auto_mirror.register()
+
+
 import math, mathutils
 from random import random, uniform, choice
 
@@ -652,7 +661,7 @@ def build_wasm( world ):
 	if SERVER_PROC: SERVER_PROC.kill()
 	o = blender_to_c3(world)
 	o = '\n'.join(o)
-	print(o)
+	if '--debug' in sys.argv: print(o)
 	wasm = c3_compile(WASM_MINI_GL + o)
 	c3_wasm_strip(wasm)
 	if sys.platform != 'win32':
@@ -688,6 +697,17 @@ def build_wasm( world ):
 	out = 'blender-c3zag-preview.html'
 	open(out,'w').write('\n'.join(o))
 	webbrowser.open(out)
+
+	if sys.platform != 'win32':
+		os.system('ls -l %s' % out)
+		os.system('ls -lh %s' % out)
+
+		cmd = ['zip', '-9', out+'.zip', out]
+		print(cmd)
+		subprocess.check_call(cmd)
+		os.system('ls -l %s.zip' % out)
+		os.system('ls -lh %s.zip' % out)
+
 
 SHADER_HEADER = '''
 int vs;
@@ -800,6 +820,30 @@ void main(void){
 
 '''
 
+def is_mesh_sym(ob):
+	left  = []
+	right = []
+	mid   = []
+	for v in ob.data.vertices:
+		x,y,z = v.co
+		if x==0:
+			mid.append((x,y,z))
+		elif x < 0:
+			left.append( (abs(x),y,z) )
+		else:
+			right.append((x,y,z))
+
+	left.sort()
+	right.sort()
+	mid.sort()
+	print('left:',len(left))
+	print('right:',len(right))
+	print('mid:',len(mid))
+
+	if len(left)==len(right) and len(mid):
+		return (tuple(left)==tuple(right))
+
+	return False
 
 def blender_to_c3(world):
 	data = [
@@ -840,7 +884,10 @@ def blender_to_c3(world):
 						s = s.replace('self.matrix', '%s_mat' % sname)
 					draw.append( s )
 
-
+			if is_mesh_sym(ob):
+				bpy.ops.object.mode_set(mode="EDIT")
+				bpy.ops.object.automirror()
+				bpy.ops.object.mode_set(mode="OBJECT")
 			a,b,c = mesh_to_c3(ob)
 			data  += a
 			setup += b
