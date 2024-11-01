@@ -209,6 +209,8 @@ extern fn void gl_bind_buffer_element(int idx);
 extern fn void gl_buffer_f16(int idx, int sz, float16 *ptr);
 extern fn void gl_buffer_f8(int idx, int sz, char *ptr);
 
+//extern fn void gl_buffer_f16_flip(int idx, int sz, float16 *ptr);
+
 extern fn void gl_buffer_element(int idx, int sz, ushort *ptr);
 //extern fn void gl_buffer_element(int idx, int sz, short *ptr);
 
@@ -292,14 +294,10 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	}
 
 	gl_bind_buffer(i){
-		const b=this.bufs[i];
-		//console.log("bind buffer:", b);
-		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,b)
+		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.bufs[i])
 	}
 	gl_bind_buffer_element(i){
-		const b=this.bufs[i];
-		//console.log("bind buffer element:", b);
-		this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER,b)
+		this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER,this.bufs[i])
 	}
 
 	//gl_buffer_data(i, sz, ptr){
@@ -309,33 +307,40 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	//	this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
 	//}
 
-	//gl_buffer_u16(i, sz, ptr){
-	//	const b=this.bufs[i];
-	//	console.log("buffer data:", b);
-	//	const arr = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
-	//	this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
-	//}
-
 	gl_buffer_f16(i, sz, ptr){
-		const b=this.bufs[i];
-		console.log("buffer data:", b);
-		const arr = new Float16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
-		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arr), this.gl.STATIC_DRAW)
+		var v=new Float16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		console.log('vertex data:', v.length);
+		//this.nverts=v.length;
+		this.nverts=v.length/3;
+		if(i){
+			var a=new Array(...v);
+			for(var j=0;j<v.length;j+=3){
+				a.push(-v[j]);
+				a.push(v[j+1]);
+				a.push(v[j+2]);
+			}
+			console.log('vmirror:', a);
+			v=a;
+		}
+		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(v), this.gl.STATIC_DRAW)
 	}
-	gl_buffer_f8(i, sz, ptr){
-		const b=this.bufs[i];
-		console.log("buffer data:", b);
-		const arr = new Uint8Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
-		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(arr), this.gl.STATIC_DRAW)
+
+	gl_buffer_f8(i,sz,ptr){
+		var v=new Uint8Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		console.log('new vcolors');
+		console.log(v);
+		if(i){
+			v=new Array(...v).concat(new Array(...v));
+			console.log('mirror vcolor:', v);
+		}
+		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(v), this.gl.STATIC_DRAW)
 	}
 
 	gl_buffer_element(i, sz, ptr){
-		const b=this.bufs[i];
-		console.log("element buffer data:", b);
 		const v = new Uint16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
 		console.log(v);
 		var a=[];
-		for (var j=0;j<sz;j+=4){
+		for(var j=0;j<v.length;j+=4){
 			//a.push(v[j],v[j+1],v[j+2]);
 
 			a.push(v[j]);
@@ -351,6 +356,15 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 			a.push(v[j+3]);
 			a.push(v[j]);
 
+		}
+		if(i){
+			var b=[];
+			// mirror indices: copy and offset by length of input vector
+			//for(var j=0;j<a.length;j++)b.push(a[j]+a.length);  //OOPS
+			for(var j=0;j<a.length;j++)b.push(a[j]+this.nverts);
+			console.log('mirror b:',b);
+			a=a.concat(b);
+			console.log('mirror a+b:', a);		
 		}
 		this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(a), this.gl.STATIC_DRAW)
 	}
@@ -426,7 +440,7 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	}
 	gl_draw_triangles(n){
 		//console.log('draw triangles:', n);
-		this.gl.drawElements(this.gl.TRIANGLES, n, this.gl.UNSIGNED_SHORT, 0)
+		this.gl.drawElements(this.gl.TRIANGLES,n,this.gl.UNSIGNED_SHORT,0)
 	}
 
 	js_sin(a){
@@ -884,11 +898,12 @@ def blender_to_c3(world):
 						s = s.replace('self.matrix', '%s_mat' % sname)
 					draw.append( s )
 
-			if is_mesh_sym(ob):
+			is_symmetric = is_mesh_sym(ob)  ## TODO this should check for a user added mirror mod on x
+			if is_symmetric:
 				bpy.ops.object.mode_set(mode="EDIT")
 				bpy.ops.object.automirror()
 				bpy.ops.object.mode_set(mode="OBJECT")
-			a,b,c = mesh_to_c3(ob)
+			a,b,c = mesh_to_c3(ob, mirror=is_symmetric)
 			data  += a
 			setup += b
 			draw  += c
@@ -921,7 +936,10 @@ def blender_to_c3(world):
 
 	return data + update + main
 
-def mesh_to_c3(ob, as_quads=True):
+def mesh_to_c3(ob, as_quads=True, mirror=False):
+	if mirror: mirror = 1
+	else: mirror = 0
+
 	name = zigzag.safename(ob.data)
 	sname = name.upper()
 
@@ -991,6 +1009,10 @@ def mesh_to_c3(ob, as_quads=True):
 
 		'const float16[]  VERTS_%s={%s};' %(sname, ','.join(verts)),  ## 16bit float verts
 	]
+	if mirror:
+		data += [
+		#'float16[%s] verts_mirror_%s;' %(len(verts),name),  ## 16bit float verts
+		]
 
 	if '--Oz' in sys.argv and '--icolor' in sys.argv:
 		rgbs = []
@@ -1183,11 +1205,26 @@ def mesh_to_c3(ob, as_quads=True):
 		'float[] %s_mat={%s};' %(name,','.join(mat)),
 	]
 
+	if mirror:
+		ob.scale.x = -ob.scale.x
+		mat = []
+		for vec in ob.matrix_local:
+			mat += [str(v) for v in vec]
+
+		data += [
+		#'int %s_mirror_vbuff;' % name,
+		#'float[] %s_mirror_mat={%s};' %(name,','.join(mat)),
+
+		]
+
 	setup = [
 		'%s_vbuff = gl_new_buffer();' % name,
 		'gl_bind_buffer(%s_vbuff);' % name,
 		#'gl_buffer_data(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
-		'gl_buffer_f16(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
+
+		#'gl_buffer_f16(%s_vbuff, VERTS_%s.len, VERTS_%s);' %(name, sname,sname),
+		'gl_buffer_f16(%s, VERTS_%s.len, VERTS_%s);' %(mirror, sname,sname),
+
 
 		'gl_vertex_attr_pointer(posloc, 3);',
 		'gl_enable_vertex_attr_array(posloc);',
@@ -1198,6 +1235,25 @@ def mesh_to_c3(ob, as_quads=True):
 		#'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 		#'gl_buffer_f16(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 	]
+
+	if mirror and 0:
+		#wasm-ld: error: /tmp/test-c3.o: undefined symbol: __extendhfsf2
+		#wasm-ld: error: /tmp/test-c3.o: undefined symbol: __truncsfhf2
+		if False:
+			## TODO how big is it to link with stdlib and the float16 funcs?
+			setup += [
+			'%s_mirror_vbuff = gl_new_buffer();' % name,
+			'gl_bind_buffer(%s_mirror_vbuff);' % name,
+			'for (int i=0; i<VERTS_%s.len; i+=3){' %sname,
+			'	verts_mirror_%s[i] = -VERTS_%s[i];' % (name,sname),
+			'	verts_mirror_%s[i+1] = VERTS_%s[i+1];' % (name,sname),
+			'	verts_mirror_%s[i+2] = VERTS_%s[i+2];' % (name,sname),
+			'}',
+			'gl_buffer_f16(%s_mirror_vbuff, verts_mirror_%s.len, &verts_mirror_%s);' %(name, name,name),
+
+			]
+
+
 	if '--Oz' in sys.argv and '--icolor' in sys.argv:
 		setup += [
 		'int ii=0;',
@@ -1207,12 +1263,12 @@ def mesh_to_c3(ob, as_quads=True):
 		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+1];' %(name, sname),
 		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+2];' %(name, sname),
 		'}',
-		'gl_buffer_f8(%s_cbuff, colors_%s.len, &colors_%s);' %(name, name,name),
+		'gl_buffer_f8(%s, colors_%s.len, &colors_%s);' %(mirror, name,name),
 		]
 
 	else:
 		setup += [
-		'gl_buffer_f8(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+		'gl_buffer_f8(%s, COLORS_%s.len, COLORS_%s);' %(mirror, sname,sname),
 
 		]
 
@@ -1228,18 +1284,23 @@ def mesh_to_c3(ob, as_quads=True):
 	if unpak:
 		setup += unpak
 		setup.append(
-		'gl_buffer_element(%s_ibuff, triangles_%s.len, &triangles_%s);' %(name, name, name)
+		'gl_buffer_element(%s, triangles_%s.len, &triangles_%s);' %(mirror, name, name)
 		)
 
 	else:
 		setup += [
-			'gl_buffer_element(%s_ibuff, INDICES_%s.len, INDICES_%s);' %(name, sname,sname),
+			'gl_buffer_element(%s, INDICES_%s.len, INDICES_%s);' %(mirror, sname,sname),
 		]
 		
 
 
 	draw = [
 		'gl_bind_buffer(%s_vbuff);' % name,
+
+		#'gl_vertex_attr_pointer(posloc, 3);',
+		#'gl_enable_vertex_attr_array(posloc);',
+
+
 		'gl_bind_buffer(%s_cbuff);' % name,
 
 		#'rotateZ(%s_mat, 15.0);' % name,
@@ -1247,8 +1308,51 @@ def mesh_to_c3(ob, as_quads=True):
 		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
 		'gl_bind_buffer_element(%s_ibuff);' % name,
 		#'gl_draw_triangles( INDICES_%s.len );' % sname,
-		'gl_draw_triangles( %s );' % num_i,
+		#'gl_draw_triangles( %s );' % num_i,
 	]
+
+	if mirror:
+		print(num_i)
+		#raise RuntimeError(num_i*2)
+		draw += [
+		'gl_draw_triangles( %s );' % (num_i*2),
+		#'gl_draw_triangles( %s );' % (num_i+128),
+
+		]
+
+	else:
+		draw += [
+		'gl_draw_triangles( %s );' % num_i,
+
+		]
+
+	if mirror and 0:
+		if False:  ## TODO this should be an option
+			##TODO this is the simple way, but with a mesh copy we animate each side on its own,
+			## and support switching to a different vertex color buffer.
+			draw += [
+			'%s_mat[0] = -%s_mat[0];' % (name,name),    ## flip x
+			'%s_mat[4] = -%s_mat[4];' % (name,name),    ## flip x
+			'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
+			'gl_draw_triangles( %s );' % num_i,
+			'%s_mat[0] = -%s_mat[0];' % (name,name),    ## flip x back
+			'%s_mat[4] = -%s_mat[4];' % (name,name),    ## flip x back
+			]
+		else:
+			draw += [
+			'gl_bind_buffer(%s_mirror_vbuff);' % name,
+
+			#'gl_vertex_attr_pointer(posloc, 3);',
+			#'gl_enable_vertex_attr_array(posloc);',
+
+			#'gl_bind_buffer(%s_cbuff);' % name,
+
+
+			#'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
+			#'gl_bind_buffer_element(%s_ibuff);' % name,
+			'gl_draw_triangles( %s );' % num_i,
+
+			]
 
 	return data, setup, draw
 
