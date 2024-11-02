@@ -12,7 +12,7 @@ bl_info = {
 	"name": "Auto Mirror",
 	"description": "Super fast cutting and mirroring for mesh",
 	"author": "Lapineige",
-	"version": (2, 5, 4),
+	"version": (2, 5, 5),
 	"blender": (2, 80, 0),
 	"location": "View 3D > Sidebar > Edit Tab > AutoMirror (panel)",
 	"warning": "",
@@ -183,6 +183,10 @@ class AutoMirror(bpy.types.Operator):
 			mirror_modifier.use_axis[2] = Z
 			mirror_modifier.use_clip = automirror.Use_Matcap
 			mirror_modifier.show_on_cage = automirror.show_on_cage
+
+			while bpy.context.active_object.modifiers[0].name != mirror_modifier.name:
+				bpy.ops.object.modifier_move_up(modifier=mirror_modifier.name)
+
 			if automirror.apply_mirror:
 				bpy.ops.object.mode_set(mode = 'OBJECT')
 				bpy.ops.object.modifier_apply(modifier = bpy.context.object.modifiers[-1].name)
