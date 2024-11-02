@@ -192,6 +192,9 @@ fn void main() @extern("main") @wasm {
 '''
 
 WASM_MINI_GL = '''
+extern fn void mesh_deform(ichar *ptr, int sz);
+//extern fn void mesh_deform(short *ptr, int sz);
+
 def Entry = fn void();
 extern fn void js_set_entry(Entry entry);
 
@@ -241,6 +244,19 @@ extern fn float js_cos(float a);
 
 '''
 
+JS_MOD_API_TODO = '''
+	mod_rand(a,m){
+		for(var j=0;j<a.length;j++){
+			if(a[j]){
+				a[j]+=Math.random()*m.value
+			} else {
+				j+=2
+			}
+		}
+		return a;
+	}
+'''
+
 JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	js_set_entry(a){
 		this.entryFunction=this.wasm.instance.exports.__indirect_function_table.get(a);
@@ -265,7 +281,21 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 		this.fs=[];
 		this.progs=[];
 		this.locs=[];
+		//this.mods=[{op:"mod_rand",value:0.1}];
+		this.mods=[];
 		this.wasm.instance.exports.main();
+	}
+	mesh_deform(ptr,sz){
+		var v=new Int8Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		//var v=new Int16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
+		this.mods.push({op:'mod_deform',value:v})
+	}
+	mod_deform(a,m){
+		//Q=512
+		for(var j=0;j<a.length;j++){
+			a[j]+=m.value[j]/256
+		}
+		return a
 	}
 
 	gl_init(w,h) {
@@ -308,6 +338,7 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	//}
 
 	gl_buffer_f16(i, sz, ptr){
+		console.log('vertbuff flag:', i);
 		var v=new Float16Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
 		console.log('vertex data:', v.length);
 		//this.nverts=v.length;
@@ -321,6 +352,10 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 			}
 			console.log('vmirror:', a);
 			v=a;
+		}
+		for(var j=0;j<this.mods.length;j++){
+			var m=this.mods[j];
+			v=this[m.op](v,m)
 		}
 		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(v), this.gl.STATIC_DRAW)
 	}
@@ -898,11 +933,69 @@ def blender_to_c3(world):
 						s = s.replace('self.matrix', '%s_mat' % sname)
 					draw.append( s )
 
+
+
 			is_symmetric = is_mesh_sym(ob)  ## TODO this should check for a user added mirror mod on x
+
 			if is_symmetric:
 				bpy.ops.object.mode_set(mode="EDIT")
 				bpy.ops.object.automirror()
 				bpy.ops.object.mode_set(mode="OBJECT")
+				ob.modifiers[0].use_mirror_merge=False
+
+
+			if ob.modifiers:
+				has_mirror = False
+				for mod in ob.modifiers:
+					if mod.type=='MIRROR':
+						#mod.show_viewport=False
+						#mod.show_render=False
+						has_mirror=True
+				Q=256
+				#Q=512
+				#Q=1024
+				#Q=8192
+				dg = bpy.context.evaluated_depsgraph_get()
+				oeval = ob.evaluated_get(dg)
+				if len(oeval.data.vertices) == len(ob.data.vertices) or has_mirror:
+					print('mesh modifiers are compatible for export')
+					deltas = []
+					qdeltas= []
+					for idx,v in enumerate(oeval.data.vertices):
+						if idx < len(ob.data.vertices):
+							delta = v.co - ob.data.vertices[idx].co
+						else:
+							vmx,vmy,vmz = ob.data.vertices[idx-len(ob.data.vertices)].co
+							vmx = -vmx
+							delta = v.co - mathutils.Vector([vmx,vmy,vmz])
+
+						x,y,z = delta
+						deltas.append((x,y,z))
+						x = int(x*Q)
+						y = int(y*Q)
+						z = int(z*Q)
+						if Q==256:
+							if x < -128: x = -128; print('WARN: vertex deform clip: %s' % idx)
+							elif x > 127: x = 127; print('WARN: vertex deform clip: %s' % idx)
+							if y < -128: y = -128; print('WARN: vertex deform clip: %s' % idx)
+							elif y > 127: y = 127; print('WARN: vertex deform clip: %s' % idx)
+							if z < -128: z = -128; print('WARN: vertex deform clip: %s' % idx)
+							elif z > 127: z = 127; print('WARN: vertex deform clip: %s' % idx)
+						qdeltas += [str(x),str(y),str(z)]
+					data += [
+						'ichar[%s] deform_%s={%s};' % (len(qdeltas),sname, ','.join(qdeltas))
+						#'short[%s] deform_%s={%s};' % (len(qdeltas),sname, ','.join(qdeltas))
+					]
+					setup += [
+						'mesh_deform(&deform_%s, deform_%s.len);' % (sname,sname)
+					]
+				else:
+					for mod in ob.modifiers:
+						print(mod)
+						print(dir(mod))
+					raise RuntimeError('incompatible modifiers')
+
+
 			a,b,c = mesh_to_c3(ob, mirror=is_symmetric)
 			data  += a
 			setup += b
@@ -939,17 +1032,14 @@ def blender_to_c3(world):
 def mesh_to_c3(ob, as_quads=True, mirror=False):
 	if mirror: mirror = 1
 	else: mirror = 0
-
 	name = zigzag.safename(ob.data)
 	sname = name.upper()
-
 	data = []
 	colors = []
 	verts = []
 	r,g,b,a = ob.color
 	lightz = 0.5
 	lighty = 0.3
-
 	x,y,z = ob.data.vertices[0].co
 
 	icolors_map = {}
@@ -1054,8 +1144,10 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 				#tris.append( (a,b,c,0) )
 				tris.append( (a,b,c,65000) )
 				num_i += 3
+				indices += [a,b,c,65000]
 			elif len(p.vertices)==4:
 				a,b,c,d = p.vertices
+				indices += [a,b,c,d]
 				num_i += 6
 				ok=False
 				for mx in groups:
@@ -1184,7 +1276,7 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 
 	if unpak:
 		data += [
-		'ushort[%s] triangles_%s;' %(num_i,name),
+		'ushort[%s] triangles_%s;' %(len(indices),name),
 		]
 	else:
 		data += [
@@ -1312,18 +1404,13 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 	]
 
 	if mirror:
-		print(num_i)
-		#raise RuntimeError(num_i*2)
 		draw += [
 		'gl_draw_triangles( %s );' % (num_i*2),
-		#'gl_draw_triangles( %s );' % (num_i+128),
-
 		]
 
 	else:
 		draw += [
 		'gl_draw_triangles( %s );' % num_i,
-
 		]
 
 	if mirror and 0:
@@ -1376,6 +1463,15 @@ def test_scene():
 	ob.rotation_euler.x = -math.pi/2
 	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
+	mod = ob.modifiers.new(name="twist-x", type="SIMPLE_DEFORM")
+	mod.angle = math.pi * 0.5
+
+	mod = ob.modifiers.new(name="twist-y", type="SIMPLE_DEFORM")
+	mod.angle = -math.pi * 0.25
+	mod.deform_axis="Y"
+
+	#mod = ob.modifiers.new(name="sphere", type="CAST")
+	#mod.factor = -1
 
 
 if __name__=='__main__':
