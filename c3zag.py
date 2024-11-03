@@ -238,6 +238,7 @@ extern fn void gl_viewport(int x, int y, int w, int h);
 
 extern fn void gl_uniform_mat4fv(int loc, float *mat);
 extern fn void gl_draw_triangles(int len);
+extern fn void gl_draw_tris_tint(int len, float r, float g, float b);
 
 extern fn float js_sin(float a);
 extern fn float js_cos(float a);
@@ -456,6 +457,7 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	}
 
 	gl_use_program(a){
+		this.loc_tint=this.gl.getUniformLocation(this.progs[a], 'T');
 		this.gl.useProgram(this.progs[a])
 	}
 
@@ -475,8 +477,19 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	}
 	gl_draw_triangles(n){
 		//console.log('draw triangles:', n);
+		this.gl.drawElements(this.gl.TRIANGLES,n,this.gl.UNSIGNED_SHORT,0);
+		//this.gl.uniform3fv(this.loc_tint, new Float32Array([Math.random(),Math.random(),Math.random()]));
+		//this.gl.drawElements(this.gl.TRIANGLES,32,this.gl.UNSIGNED_SHORT,0);
+		//this.gl.uniform3fv(this.loc_tint, new Float32Array([0,0,0]));
+		//this.gl.drawElements(this.gl.TRIANGLES,n-64,this.gl.UNSIGNED_SHORT,6*16)
+	}
+
+	gl_draw_tris_tint(n, r,g,b){
+		//console.log('draw triangles:', n);
+		this.gl.uniform3fv(this.loc_tint, new Float32Array([r,g,b]));
 		this.gl.drawElements(this.gl.TRIANGLES,n,this.gl.UNSIGNED_SHORT,0)
 	}
+
 
 	js_sin(a){
 		return Math.sin(a)
@@ -851,11 +864,12 @@ attribute vec3 vp;
 uniform mat4 P;
 uniform mat4 V;
 uniform mat4 M;
+uniform vec3 T;
 attribute vec3 vc;
 varying vec3 VC;
 void main(void){
 	gl_Position=P*V*M*vec4(vp,1.);
-	VC=vc;
+	VC=vc+(T*255.0);
 }
 `;
 
@@ -1029,7 +1043,7 @@ def blender_to_c3(world):
 
 	return data + update + main
 
-def mesh_to_c3(ob, as_quads=True, mirror=False):
+def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 	if mirror: mirror = 1
 	else: mirror = 0
 	name = zigzag.safename(ob.data)
@@ -1037,7 +1051,15 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 	data = []
 	colors = []
 	verts = []
-	r,g,b,a = ob.color
+	if len(ob.data.materials)==1:
+		r,g,b,a = ob.data.materials[0].diffuse_color
+	elif len(ob.data.materials) > 1:
+		## TODO normals
+		r=g=b=0.125
+		a=1.0
+	else:
+		r,g,b,a = ob.color
+
 	lightz = 0.5
 	lighty = 0.3
 	x,y,z = ob.data.vertices[0].co
@@ -1126,9 +1148,10 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 
 	unpak = []
 	indices = []
+	indices_by_mat = {}
 	num_i = 0
 	i_off = 0
-	if '--Oz' in sys.argv and len(ob.data.vertices) < 512:
+	if '--Oz' in sys.argv and len(ob.data.vertices) < 512 and len(ob.data.materials) <= 1:
 		groups = {
 			32  : [],
 			64  : [],
@@ -1220,8 +1243,14 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 	elif as_quads:
 		inc = 16
 		for p in ob.data.polygons:
+			if p.material_index not in indices_by_mat:
+				indices_by_mat[p.material_index] = {'num':0, 'indices':[]}
+
 			if len(p.vertices)==4:
 				x,y,z,w = p.vertices
+				indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+				indices_by_mat[p.material_index]['num'] += 6
+
 				dy = y-x
 				dz = z-x
 				dw = w-x
@@ -1246,6 +1275,11 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 
 				num_i += 6
 			elif len(p.vertices)==3:
+				x,y,z = p.vertices
+				w = 65000
+				indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+				indices_by_mat[p.material_index]['num'] += 3
+
 				indices.append(str(p.vertices[0]+i_off))
 				indices.append(str(p.vertices[1]+i_off))
 				indices.append(str(p.vertices[2]+i_off))
@@ -1263,6 +1297,7 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 			inc += 1
 
 	else:
+		raise RuntimeError('triangles are deprecated')
 		for p in ob.data.polygons:
 			indices.append(str(p.vertices[0]))
 			indices.append(str(p.vertices[1]))
@@ -1274,7 +1309,19 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 				indices.append(str(p.vertices[0]))
 				num_i += 3
 
-	if unpak:
+	print(indices)
+	for midx in indices_by_mat:
+		print('material_index:', midx)
+		print(indices_by_mat[midx])
+
+	if len(indices_by_mat) > 1:
+		for midx in indices_by_mat:
+			mi = [str(v).replace('(','').replace(')','').replace(' ', '') for v in indices_by_mat[midx]['indices']]
+			data += [
+				'const ushort[] INDICES_%s_%s={%s};' %(sname, midx, ', '.join(mi)),
+			]
+
+	elif unpak:
 		data += [
 		'ushort[%s] triangles_%s;' %(len(indices),name),
 		]
@@ -1292,10 +1339,14 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 
 	data += [
 		'int %s_vbuff;' % name,
-		'int %s_ibuff;' % name,
 		'int %s_cbuff;' % name,
 		'float[] %s_mat={%s};' %(name,','.join(mat)),
 	]
+	if len(indices_by_mat) > 1:
+		for midx in indices_by_mat:
+			data.append('int %s_%s_ibuff;' % (name,midx))
+	else:
+		data.append('int %s_ibuff;' % name)
 
 	if mirror:
 		ob.scale.x = -ob.scale.x
@@ -1367,22 +1418,33 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 	setup += [
 		'gl_vertex_attr_pointer(clrloc, 3);',
 		'gl_enable_vertex_attr_array(clrloc);',
-
-
-		'%s_ibuff = gl_new_buffer();' % name,
-		'gl_bind_buffer_element(%s_ibuff);' % name,
 	]
 
-	if unpak:
-		setup += unpak
-		setup.append(
-		'gl_buffer_element(%s, triangles_%s.len, &triangles_%s);' %(mirror, name, name)
-		)
 
+
+	if len(indices_by_mat) > 1:
+		for midx in indices_by_mat:
+			setup += [
+				'%s_%s_ibuff = gl_new_buffer();' % (name,midx),
+				'gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx),
+				'gl_buffer_element(%s, INDICES_%s_%s.len, INDICES_%s_%s);' %(mirror, sname,midx, sname,midx),
+			]
 	else:
 		setup += [
-			'gl_buffer_element(%s, INDICES_%s.len, INDICES_%s);' %(mirror, sname,sname),
+		'%s_ibuff = gl_new_buffer();' % name,
+		'gl_bind_buffer_element(%s_ibuff);' % name,
 		]
+
+		if unpak:
+			setup += unpak
+			setup.append(
+			'gl_buffer_element(%s, triangles_%s.len, &triangles_%s);' %(mirror, name, name)
+			)
+
+		else:
+			setup += [
+				'gl_buffer_element(%s, INDICES_%s.len, INDICES_%s);' %(mirror, sname,sname),
+			]
 		
 
 
@@ -1398,48 +1460,34 @@ def mesh_to_c3(ob, as_quads=True, mirror=False):
 		#'rotateZ(%s_mat, 15.0);' % name,
 
 		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
-		'gl_bind_buffer_element(%s_ibuff);' % name,
+		#'gl_bind_buffer_element(%s_ibuff);' % name,
 		#'gl_draw_triangles( INDICES_%s.len );' % sname,
 		#'gl_draw_triangles( %s );' % num_i,
 	]
 
-	if mirror:
-		draw += [
-		'gl_draw_triangles( %s );' % (num_i*2),
-		]
+	if len(indices_by_mat) > 1:
+		for midx in indices_by_mat:
+			num = indices_by_mat[midx]['num']
+			draw.append('gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx))
+			r,g,b,a = ob.data.materials[midx].diffuse_color
+			if mirror:
+				draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num*2,r,g,b))
+			else:
+				draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num,r,g,b))
 
 	else:
-		draw += [
-		'gl_draw_triangles( %s );' % num_i,
-		]
+		draw.append('gl_bind_buffer_element(%s_ibuff);' % name)
 
-	if mirror and 0:
-		if False:  ## TODO this should be an option
-			##TODO this is the simple way, but with a mesh copy we animate each side on its own,
-			## and support switching to a different vertex color buffer.
+		if mirror:
 			draw += [
-			'%s_mat[0] = -%s_mat[0];' % (name,name),    ## flip x
-			'%s_mat[4] = -%s_mat[4];' % (name,name),    ## flip x
-			'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
-			'gl_draw_triangles( %s );' % num_i,
-			'%s_mat[0] = -%s_mat[0];' % (name,name),    ## flip x back
-			'%s_mat[4] = -%s_mat[4];' % (name,name),    ## flip x back
+			'gl_draw_triangles( %s );' % (num_i*2),
 			]
+
 		else:
 			draw += [
-			'gl_bind_buffer(%s_mirror_vbuff);' % name,
-
-			#'gl_vertex_attr_pointer(posloc, 3);',
-			#'gl_enable_vertex_attr_array(posloc);',
-
-			#'gl_bind_buffer(%s_cbuff);' % name,
-
-
-			#'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
-			#'gl_bind_buffer_element(%s_ibuff);' % name,
 			'gl_draw_triangles( %s );' % num_i,
-
 			]
+
 
 	return data, setup, draw
 
@@ -1447,18 +1495,35 @@ EXAMPLE1 = '''
 rotateY( self.matrix, self.my_prop );
 '''
 
-def test_scene():
-	a = bpy.data.texts.new(name='example1.zig')
-	a.from_string(EXAMPLE1)
-
+def test_scene( test_materials=True ):
 	ob = bpy.data.objects['Cube']
 	ob.hide_set(True)
 
 	bpy.ops.mesh.primitive_monkey_add()
 	ob = bpy.context.active_object
+	a = bpy.data.texts.new(name='example1.zig')
+	a.from_string(EXAMPLE1)
 	ob.c3_script0 = a
 	ob['my_prop'] = 0.01
 	ob.color = [.7,.5,.5, 1.0]
+
+	if test_materials:
+		for i in range(3):
+			mat = bpy.data.materials.new(name='%s'%i)
+			mat.diffuse_color = [random(), random(), random(), 1]
+			ob.data.materials.append(mat)
+
+		## eyes
+		for poly in ob.data.polygons[0:64]:
+			poly.material_index=1
+		for poly in ob.data.polygons[0:32]:
+			poly.material_index=2
+
+	if 0:
+		bpy.ops.object.mode_set(mode="EDIT")
+		#bpy.ops.mesh.sort_elements(type="MATERIAL", elements={"FACE"} )  ## bigger
+		bpy.ops.mesh.sort_elements(type="MATERIAL", elements={"VERT"} )   ## smaller
+		bpy.ops.object.mode_set(mode="OBJECT")
 
 	ob.rotation_euler.x = -math.pi/2
 	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
