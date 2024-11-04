@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 import os, sys, subprocess, base64, webbrowser, zipfile
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
-
+if _thisdir not in sys.path: sys.path.append(_thisdir)
+import libwebzag
 GZIP = 'gzip'
 
 zigzip=zigxz=None
@@ -95,34 +96,7 @@ def test_wasm( freestanding=True):
 	if sys.platform!='win32':
 		os.system('ls -l /tmp/*.wasm')
 
-JS_API_HEADER = '''
-function make_environment(e){
-	return new Proxy(e,{
-		get(t,p,r) {
-			if(e[p]!==undefined){return e[p].bind(e)}
-			return(...args)=>{throw p}
-		}
-	});
-}
 
-function cstrlen(m,p){
-	var l=0;
-	while(m[p]!=0){l++;p++}
-	return l;
-}
-
-function cstr_by_ptr(m,p){
-	const l=cstrlen(new Uint8Array(m),p);
-	const b=new Uint8Array(m,p,l);
-	return new TextDecoder().decode(b)
-}
-'''
-
-JS_API_PROXY = '''
-	proxy(){
-		return make_environment(this)
-	}
-'''
 
 JS_API_RESET = '''
 	reset(wasm,id,bytes){
@@ -145,7 +119,7 @@ JS_API_RESET = '''
 	}
 '''
 
-JS_API = JS_API_HEADER + 'class api {' + JS_API_PROXY + JS_API_RESET + '''
+JS_API = libwebzag.JS_API_HEADER + 'class api {' + libwebzag.JS_API_PROXY + JS_API_RESET + '''
 
 	rect(x,y,w,h, r,g,b,a){
 		this.ctx.fillStyle='rgba('+r+','+g+','+b+','+a+')';
@@ -205,24 +179,7 @@ JS_API = JS_API_HEADER + 'class api {' + JS_API_PROXY + JS_API_RESET + '''
 new api();
 '''
 
-JS_DECOMP = '''
-var $d=async(u,t)=>{
-	var d=new DecompressionStream('gzip')
-	var r=await fetch('data:application/octet-stream;base64,'+u)
-	var b=await r.blob()
-	var s=b.stream().pipeThrough(d)
-	var o=await new Response(s).blob()
-	if(t) return await o.text()
-	else return await o.arrayBuffer()
-}
 
-$d($0,1).then((j)=>{
-	$=eval(j)
-	$d($1).then((r)=>{
-		WebAssembly.instantiate(r,{env:$.proxy()}).then((c)=>{$.reset(c,"$",r)});
-	});
-});
-'''
 
 
 TEST_WASM_CANVAS = r'''
@@ -290,7 +247,7 @@ def build(zig, memsize=4):
 		'<script>', 
 		'var $0="%s"' % jsb,
 		'var $1="%s"' % b,
-		JS_DECOMP,
+		libwebzag.JS_DECOMP,
 		'</script>',
 	]
 
@@ -363,8 +320,9 @@ if bpy:
 	import math, mathutils
 	from random import random, uniform, choice
 
-	MAX_SCRIPTS_PER_OBJECT = 8
+MAX_SCRIPTS_PER_OBJECT = 8
 
+def register():
 	for i in range(MAX_SCRIPTS_PER_OBJECT):
 		setattr(
 			bpy.types.Object,
@@ -801,6 +759,7 @@ def test_scene():
 
 
 if __name__=='__main__':
+	register()
 	if '--monkey' in sys.argv:
 		bpy.ops.object.gpencil_add(type='MONKEY')
 		ob = bpy.context.active_object
