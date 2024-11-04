@@ -284,6 +284,7 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 		this.wasm=wasm;
 		this.canvas=document.getElementById(id);
 		this.gl=this.canvas.getContext('webgl');
+		this.gl.getExtension("OES_standard_derivatives");
 		this.bufs=[];
 		this.vs=[];
 		this.fs=[];
@@ -374,11 +375,11 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	gl_trans_upload(i){
 		var a=new Float32Array(this.bufs[i]._arr_);
 		for (var k in this.bufs[i]._){
-			console.log('upload:', k);
+			//console.log('upload:', k);
 			var [x,y,z]=this.bufs[i]._[k]._pos;
-			console.log('offset:', x,y,z);
+			//console.log('offset:', x,y,z);
 			var v=this.bufs[i]._[k]._arr_;
-			console.log('indices:', v);
+			//console.log('indices:', v);
 			for(var j=0;j<v.length;j++){
 				var d=v[j]*3;
 				a[d]+=x;
@@ -975,7 +976,7 @@ def has_scripts(ob):
 		if txt: return True
 	return False
 
-BLENDER_SHADER = '''
+BLENDER_SHADER_VCOLORS = '''
 const char* VERTEX_SHADER = `
 attribute vec3 vp;
 uniform mat4 P;
@@ -999,6 +1000,42 @@ void main(void){
 `;
 
 '''
+
+
+# VVS vertex view space
+BLENDER_SHADER_FLAT = '''
+const char* VERTEX_SHADER = `
+attribute vec3 vp;
+uniform mat4 P;
+uniform mat4 V;
+uniform mat4 M;
+uniform vec3 T;
+varying vec3 VVS;
+varying vec3 VC;
+void main(void){
+	VVS=(M*V*vec4(vp,1.0)).xyz;
+	gl_Position=P*V*M*vec4(vp,1.);
+	VC=T;
+}
+`;
+
+const char* FRAGMENT_SHADER = `
+#extension GL_OES_standard_derivatives:enable
+precision mediump float;
+varying vec3 VVS;
+varying vec3 VC;
+void main(void){
+	vec3 U=dFdx(VVS);
+	vec3 V=dFdy(VVS);
+	vec3 N=normalize(cross(U,V));
+	vec3 f=vec3(1.1,1.1,1.1)*N.z;
+	gl_FragColor=vec4( (VC+(N*0.2))*f ,1.0);
+}
+`;
+
+'''
+#	vec3 f=vec3(1,1,1)*N.z;
+
 
 def is_mesh_sym(ob, strict=False):
 	left  = []
@@ -1029,10 +1066,14 @@ def is_mesh_sym(ob, strict=False):
 
 	return False
 
-def blender_to_c3(world):
+def blender_to_c3(world, use_vertex_colors=False):
+	if use_vertex_colors:
+		shader = BLENDER_SHADER_VCOLORS
+	else:
+		shader = BLENDER_SHADER_FLAT
 	data = [
 		SHADER_HEADER,
-		BLENDER_SHADER,
+		shader,
 		DEBUG_CAMERA,
 		HELPER_FUNCS,
 	]
@@ -1135,7 +1176,7 @@ def blender_to_c3(world):
 					raise RuntimeError('incompatible modifiers')
 
 
-			a,b,c = mesh_to_c3(ob, mirror=is_symmetric)
+			a,b,c = mesh_to_c3(ob, mirror=is_symmetric, use_vertex_colors=use_vertex_colors)
 			data  += a
 			setup += b
 			draw  += c
@@ -1168,7 +1209,7 @@ def blender_to_c3(world):
 
 	return data + update + main
 
-def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
+def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vertex_colors=False):
 	if mirror: mirror = 1
 	else: mirror = 0
 	name = zigzag.safename(ob.data)
@@ -1251,24 +1292,25 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 		#'float16[%s] verts_mirror_%s;' %(len(verts),name),  ## 16bit float verts
 		]
 
-	if '--Oz' in sys.argv and '--icolor' in sys.argv:
-		rgbs = []
-		for key in icolors_map:
-			rgbs.append( '%s,%s,%s' % key )
+	if use_vertex_colors:
+		if '--Oz' in sys.argv and '--icolor' in sys.argv:
+			rgbs = []
+			for key in icolors_map:
+				rgbs.append( '%s,%s,%s' % key )
 
-		data += [
-		'',
-		'char[%s]  colors_%s;' %(len(colors), name),  ## color map
-		'const char[] ICOLORS_%s={%s};' %(sname, ','.join(icolors)),
-		'const char[%s] COLOR_MAP_%s={%s};' %(len(icolors_map)*3, sname, ', '.join(rgbs)),
-		'',
-		]
+			data += [
+			'',
+			'char[%s]  colors_%s;' %(len(colors), name),  ## color map
+			'const char[] ICOLORS_%s={%s};' %(sname, ','.join(icolors)),
+			'const char[%s] COLOR_MAP_%s={%s};' %(len(icolors_map)*3, sname, ', '.join(rgbs)),
+			'',
+			]
 
-	else:
-		data += [
-		'const char[]  COLORS_%s={%s};' %(sname, ','.join(colors)),  ## 8bit per-chan color
-		'',
-		]
+		else:
+			data += [
+			'const char[]  COLORS_%s={%s};' %(sname, ','.join(colors)),  ## 8bit per-chan color
+			'',
+			]
 
 
 	unpak = []
@@ -1464,9 +1506,13 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 
 	data += [
 		'int %s_vbuff;' % name,
-		'int %s_cbuff;' % name,
 		'float[] %s_mat={%s};' %(name,','.join(mat)),
 	]
+	if use_vertex_colors:
+		data.append(
+		'int %s_cbuff;' % name
+		)
+
 	if len(indices_by_mat) > 1:
 		for midx in indices_by_mat:
 			data.append('int %s_%s_ibuff;' % (name,midx))
@@ -1496,13 +1542,16 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 
 		'gl_vertex_attr_pointer(posloc, 3);',
 		'gl_enable_vertex_attr_array(posloc);',
-
-
-		'%s_cbuff = gl_new_buffer();' % name,
-		'gl_bind_buffer(%s_cbuff);' % name,
-		#'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
-		#'gl_buffer_f16(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 	]
+
+	if use_vertex_colors:
+		setup += [
+
+			'%s_cbuff = gl_new_buffer();' % name,
+			'gl_bind_buffer(%s_cbuff);' % name,
+			#'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+			#'gl_buffer_f16(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
+		]
 
 	if mirror and 0:
 		#wasm-ld: error: /tmp/test-c3.o: undefined symbol: __extendhfsf2
@@ -1521,29 +1570,29 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 
 			]
 
+	if use_vertex_colors:
+		if '--Oz' in sys.argv and '--icolor' in sys.argv:
+			setup += [
+			'int ii=0;',
+			'for (int i=0; i<ICOLORS_%s.len; i++){' %sname ,
+			'	int clr_index = ICOLORS_%s[i]*3;' % sname,
+			'	colors_%s[ii++] = COLOR_MAP_%s[clr_index];' %(name, sname),
+			'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+1];' %(name, sname),
+			'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+2];' %(name, sname),
+			'}',
+			'gl_buffer_f8(%s, colors_%s.len, &colors_%s);' %(mirror, name,name),
+			]
 
-	if '--Oz' in sys.argv and '--icolor' in sys.argv:
+		else:
+			setup += [
+			'gl_buffer_f8(%s, COLORS_%s.len, COLORS_%s);' %(mirror, sname,sname),
+
+			]
+
 		setup += [
-		'int ii=0;',
-		'for (int i=0; i<ICOLORS_%s.len; i++){' %sname ,
-		'	int clr_index = ICOLORS_%s[i]*3;' % sname,
-		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index];' %(name, sname),
-		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+1];' %(name, sname),
-		'	colors_%s[ii++] = COLOR_MAP_%s[clr_index+2];' %(name, sname),
-		'}',
-		'gl_buffer_f8(%s, colors_%s.len, &colors_%s);' %(mirror, name,name),
+			'gl_vertex_attr_pointer(clrloc, 3);',
+			'gl_enable_vertex_attr_array(clrloc);',
 		]
-
-	else:
-		setup += [
-		'gl_buffer_f8(%s, COLORS_%s.len, COLORS_%s);' %(mirror, sname,sname),
-
-		]
-
-	setup += [
-		'gl_vertex_attr_pointer(clrloc, 3);',
-		'gl_enable_vertex_attr_array(clrloc);',
-	]
 
 
 
@@ -1663,7 +1712,8 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 				'if(needs_upload) { gl_trans_upload(%s_vbuff); }' % name
 			)
 
-		draw.append('gl_bind_buffer(%s_cbuff);' % name)
+		if use_vertex_colors:
+			draw.append('gl_bind_buffer(%s_cbuff);' % name)
 
 		for midx in indices_by_mat:
 			num = indices_by_mat[midx]['num']
@@ -1685,7 +1735,8 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 				draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num,r,g,b))
 
 	else:
-		draw.append('gl_bind_buffer(%s_cbuff);' % name)
+		if use_vertex_colors:
+			draw.append('gl_bind_buffer(%s_cbuff);' % name)
 		draw.append('gl_bind_buffer_element(%s_ibuff);' % name)
 
 		if mirror:
