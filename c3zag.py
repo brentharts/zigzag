@@ -240,8 +240,15 @@ extern fn void gl_uniform_mat4fv(int loc, float *mat);
 extern fn void gl_draw_triangles(int len);
 extern fn void gl_draw_tris_tint(int len, float r, float g, float b);
 
+extern fn void gl_material_translate(int matid, int vid, float x, float y, float z);
+
+extern fn void gl_trans(int matid, float x, float y, float z);
+extern fn void gl_trans_upload(int vid);
+
+
 extern fn float js_sin(float a);
 extern fn float js_cos(float a);
+extern fn float js_rand();
 
 '''
 
@@ -321,7 +328,9 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	//}
 
 	gl_new_buffer(){
-		return this.bufs.push(this.gl.createBuffer())-1
+		var a=this.gl.createBuffer();
+		a._={};
+		return this.bufs.push(a)-1
 	}
 
 	gl_bind_buffer(i){
@@ -329,7 +338,8 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 		this.vbuf=this.bufs[i]
 	}
 	gl_bind_buffer_element(i){
-		this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER,this.bufs[i])
+		this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER,this.bufs[i]);
+		this.ibuf=this.bufs[i]
 	}
 
 	//gl_buffer_data(i, sz, ptr){
@@ -338,6 +348,48 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	//	const arr = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,sz);
 	//	this.gl.bufferData(this.gl.ARRAY_BUFFER, arr, this.gl.STATIC_DRAW)
 	//}
+
+	gl_material_translate(mi,vi, x,y,z){
+		var v=this.bufs[mi]._arr_;
+		var a=new Float32Array(this.bufs[vi]._arr_);
+		for(var j=0;j<v.length;j++){
+			var k=v[j]*3;
+			//a[k]+=x;
+			//a[k+1]+=y;
+			//a[k+2]+=z;
+
+			a[k+1]+=0.06 * Math.random();
+
+
+		}
+		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.bufs[vi]);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER,a,this.gl.STATIC_DRAW)
+	}
+	gl_trans(i, x,y,z){
+		// this should be an index buffer
+		//console.log('trans:', i, x,y,z);
+		this.bufs[i]._pos=[x,y,z];
+		this.vbuf._[i]=this.bufs[i]
+	}
+	gl_trans_upload(i){
+		var a=new Float32Array(this.bufs[i]._arr_);
+		for (var k in this.bufs[i]._){
+			console.log('upload:', k);
+			var [x,y,z]=this.bufs[i]._[k]._pos;
+			console.log('offset:', x,y,z);
+			var v=this.bufs[i]._[k]._arr_;
+			console.log('indices:', v);
+			for(var j=0;j<v.length;j++){
+				var d=v[j]*3;
+				a[d]+=x;
+				a[d+1]+=y;
+				a[d+2]+=z
+			}
+		}
+		//console.log('vertex upload:', a);
+		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.bufs[i]);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER,a,this.gl.STATIC_DRAW)
+	}
 
 	gl_buffer_f16(i, sz, ptr){
 		console.log('vertbuff flag:', i);
@@ -404,7 +456,8 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 			a=a.concat(b);
 			console.log('mirror a+b:', a);		
 		}
-		this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(a), this.gl.STATIC_DRAW)
+		this.ibuf._arr_=new Uint16Array(a);
+		this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER,this.ibuf._arr_,this.gl.STATIC_DRAW)
 	}
 
 
@@ -498,6 +551,9 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	}
 	js_cos(a){
 		return Math.cos(a)
+	}
+	js_rand(){
+		return Math.random()
 	}
 
 }
@@ -1524,7 +1580,7 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 		#'gl_enable_vertex_attr_array(posloc);',
 
 
-		'gl_bind_buffer(%s_cbuff);' % name,
+		#'gl_bind_buffer(%s_cbuff);' % name,
 
 		#'rotateZ(%s_mat, 15.0);' % name,
 
@@ -1535,16 +1591,101 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False):
 	]
 
 	if len(indices_by_mat) > 1:
+		needs_upload = False
+		lower_eyelid = None
+		for midx in indices_by_mat:
+			mat = ob.data.materials[midx]
+			if mat.c3_object_type == "LOWER_EYELID":
+				lower_eyelid=midx
+				break
+
+		for midx in indices_by_mat:
+			mat = ob.data.materials[midx]
+			if mat.c3_object_type != "NONE":
+				draw += [
+					'bool needs_upload=false;'
+				]
+
+				data += [
+					'float eyes_x=0.0;'
+					'float eyes_y=0.0;'
+					'bool blink=false;',
+				]
+				break
+
+
+		for midx in indices_by_mat:
+			mat = ob.data.materials[midx]
+			if mat.c3_object_type != "NONE":
+				if mat.c3_object_type=="LOWER_LIP":
+					draw += [
+						'if(js_rand() < 0.06){',
+						'	gl_trans(%s_%s_ibuff,0, (js_rand()-0.25)*0.1 ,0);' % (name,midx),
+						'	needs_upload=true;',
+						'}',
+					]
+				elif mat.c3_object_type=="EYES":
+					draw += [
+						'if(js_rand() < 0.03){',
+						'	eyes_x=(js_rand()-0.5)*0.05;',
+						'	eyes_y=(js_rand()-0.5)*0.01;',
+						'	rotateY(%s_mat, eyes_x*2);' %name,
+						#'	gl_trans(%s_%s_ibuff, (js_rand()-0.5)*0.05,(js_rand()-0.5)*0.01,0);' % (name,midx),
+						'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
+						'	needs_upload=true;',
+						#'}',
+					]
+					if lower_eyelid is not None:
+						draw += [
+						'	gl_trans(%s_%s_ibuff, eyes_x*0.25,(eyes_y*0.4)+( (js_rand()-0.35) *0.07),0.025);' % (name,lower_eyelid),
+						]
+
+					draw.append('}')
+
+				elif mat.c3_object_type=="UPPER_EYELID":
+					draw += [
+						'if(js_rand() < 0.06 || needs_upload){',
+						'	gl_trans(%s_%s_ibuff, eyes_x*0.2, ((js_rand()-0.7)*0.07)+(eyes_y*0.2) ,0.05);' % (name,midx),
+						'	needs_upload=true;',
+						'}',
+					]
+
+				needs_upload = True
+
+				#draw.append(
+				#	'gl_trans(%s_%s_ibuff, %s,%s,%s);'%(
+				#		name,midx, 0, 0.05, 0
+				#	)
+				#)
+
+		if needs_upload:
+			draw.append(
+				'if(needs_upload) { gl_trans_upload(%s_vbuff); }' % name
+			)
+
+		draw.append('gl_bind_buffer(%s_cbuff);' % name)
+
 		for midx in indices_by_mat:
 			num = indices_by_mat[midx]['num']
 			draw.append('gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx))
-			r,g,b,a = ob.data.materials[midx].diffuse_color
+			mat = ob.data.materials[midx]
+
+			#if mat.c3_object_type in ('LOWER_LIP', 'LOWER_EYELID'):
+			#if mat.c3_object_type != "NONE":
+			#	draw.append(
+			#		'gl_material_translate(%s_%s_ibuff, %s_vbuff, %s,%s,%s);'%(
+			#			name,midx, name, 0,0.07,0
+			#		)
+			#	)
+
+			r,g,b,a = mat.diffuse_color
 			if mirror:
 				draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num*2,r,g,b))
 			else:
 				draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num,r,g,b))
 
 	else:
+		draw.append('gl_bind_buffer(%s_cbuff);' % name)
 		draw.append('gl_bind_buffer_element(%s_ibuff);' % name)
 
 		if mirror:
@@ -1564,7 +1705,7 @@ EXAMPLE1 = '''
 rotateY( self.matrix, self.my_prop );
 '''
 
-def test_scene( test_materials=True, test_twist=False ):
+def test_scene( test_materials=True, test_twist=False, spin_script=False ):
 	cu = bpy.data.objects['Cube']
 	cu.data.materials.clear()
 	#cu.hide_set(True)
@@ -1584,6 +1725,7 @@ def test_scene( test_materials=True, test_twist=False ):
 	ob = bpy.context.active_object
 
 	monkey_mod = {0: (0.002, 0.07, -0.004), 1: (-0.002, 0.07, -0.004), 2: (-0.013, 0.065, 0.015), 3: (0.013, 0.065, 0.015), 4: (-0.027, 0.041, 0.025), 5: (0.027, 0.041, 0.025), 6: (0.0, 0.048, 0.035), 7: (0.0, 0.048, 0.035), 8: (0.0, 0.069, 0.021), 9: (0.0, 0.069, 0.021), 10: (0.001, 0.068, -0.007), 11: (-0.001, 0.068, -0.007), 12: (-0.004, 0.069, -0.004), 13: (0.004, 0.069, -0.004), 14: (0.014, 0.071, 0.015), 15: (-0.014, 0.071, 0.015), 16: (0.027, 0.052, 0.025), 17: (-0.027, 0.052, 0.025), 18: (0.036, 0.052, 0.001), 19: (-0.036, 0.052, 0.001), 20: (0.021, 0.067, 0.0), 21: (-0.021, 0.067, 0.0), 22: (-0.007, 0.067, 0.001), 23: (0.007, 0.067, 0.001), 24: (-0.004, 0.069, 0.002), 25: (0.004, 0.069, 0.002), 26: (0.014, 0.071, -0.013), 27: (-0.014, 0.071, -0.013), 28: (0.027, 0.052, -0.027), 29: (-0.027, 0.052, -0.027), 30: (0.0, 0.048, -0.036), 31: (0.0, 0.048, -0.036), 32: (0.0, 0.069, -0.02), 33: (0.0, 0.069, -0.02), 34: (0.001, 0.068, 0.006), 35: (-0.001, 0.068, 0.006), 36: (0.002, 0.07, 0.002), 37: (-0.002, 0.07, 0.002), 38: (-0.013, 0.065, -0.013), 39: (0.013, 0.065, -0.013), 40: (-0.027, 0.041, -0.027), 41: (0.027, 0.041, -0.027), 42: (-0.036, 0.04, 0.001), 43: (0.036, 0.04, 0.001), 44: (-0.02, 0.062, 0.0), 45: (0.02, 0.062, 0.0), 46: (0.005, 0.07, 0.001), 47: (-0.005, 0.07, 0.001), 48: (-0.024, 0.056, 0.001), 49: (0.024, 0.056, 0.001), 50: (-0.021, 0.057, -0.02), 51: (0.021, 0.057, -0.02), 52: (0.001, 0.064, -0.028), 53: (-0.001, 0.064, -0.028), 54: (0.018, 0.067, -0.02), 55: (-0.018, 0.067, -0.02), 56: (0.027, 0.065, 0.001), 57: (-0.027, 0.065, 0.001), 58: (0.018, 0.067, 0.018), 59: (-0.018, 0.067, 0.018), 60: (0.001, 0.077, 0.001), 61: (-0.001, 0.077, 0.001), 62: (0.001, 0.064, 0.027), 63: (-0.001, 0.064, 0.027), 64: (-0.021, 0.057, 0.018), 65: (0.021, 0.057, 0.018), 68: (0.0, -0.056, 0.135), 71: (0.0, 0.0, 0.136), 113: (0.0, 0.0, -0.064), 114: (0.0, 0.0, -0.064), 115: (0.0, 0.0, -0.036), 116: (0.0, 0.0, -0.036), 129: (0.0, -0.067, 0.136), 130: (0.119, -0.067, 0.084), 131: (-0.119, -0.067, 0.084), 132: (0.127, 0.0, 0.084), 133: (-0.127, 0.0, 0.084), 134: (0.123, -0.041, 0.0), 135: (-0.123, -0.041, 0.0), 136: (0.0, -0.041, 0.0), 145: (0.0, 0.0, -0.036), 146: (0.0, 0.0, -0.036), 167: (0.039, 0.0, 0.135), 168: (-0.039, 0.0, 0.135), 169: (0.041, 0.0, 0.0), 170: (-0.041, 0.0, 0.0), 171: (0.036, 0.0, 0.0), 172: (-0.036, 0.0, 0.0), 184: (0.035, -0.056, 0.135), 185: (-0.035, -0.056, 0.135), 216: (0.0, -0.001, 0.055), 217: (0.092, -0.001, 0.055), 218: (-0.092, -0.001, 0.055), 219: (0.102, 0.0, 0.087), 220: (-0.102, 0.0, 0.087), 221: (0.102, 0.0, 0.084), 222: (-0.102, 0.0, 0.084), 223: (0.0, 0.178, 0.243), 224: (0.104, 0.175, 0.186), 225: (-0.104, 0.175, 0.186), 226: (0.102, 0.0, 0.087), 227: (-0.102, 0.0, 0.087), 228: (0.135, 0.185, 0.044), 229: (-0.135, 0.185, 0.044), 230: (0.0, 0.185, 0.042), 257: (0.0, 0.055, 0.0), 258: (0.0, 0.055, 0.0), 259: (0.0, 0.055, 0.0), 260: (0.0, 0.055, 0.0), 261: (0.0, 0.055, 0.0), 262: (0.0, 0.055, 0.0), 263: (0.0, 0.055, 0.0), 264: (0.0, 0.055, 0.0), 265: (0.0, 0.055, 0.0), 266: (0.0, 0.055, 0.0), 267: (0.0, 0.055, 0.0), 268: (0.0, 0.055, 0.0), 269: (0.0, 0.055, 0.0), 270: (0.0, 0.055, 0.0), 271: (0.0, 0.055, 0.0), 272: (0.0, 0.055, 0.0), 273: (0.0, 0.055, 0.0), 274: (0.0, 0.055, 0.0), 275: (0.0, 0.055, 0.0), 276: (0.0, 0.055, 0.0), 277: (0.0, 0.055, 0.0), 278: (0.0, 0.055, 0.0), 279: (0.0, 0.055, 0.0), 280: (0.0, 0.055, 0.0), 281: (0.0, 0.055, 0.0), 282: (0.0, 0.055, 0.0)}
+	#{68: (0.0, -0.056, 0.135), 71: (0.0, 0.0, 0.136), 113: (0.0, 0.0, -0.064), 114: (0.0, 0.0, -0.064), 115: (0.0, 0.0, -0.036), 116: (0.0, 0.0, -0.036), 129: (0.0, -0.067, 0.136), 130: (0.119, -0.067, 0.084), 131: (-0.119, -0.067, 0.084), 132: (0.127, 0.0, 0.084), 133: (-0.127, 0.0, 0.084), 134: (0.123, -0.041, 0.0), 135: (-0.123, -0.041, 0.0), 136: (0.0, -0.041, 0.0), 145: (0.0, 0.0, -0.036), 146: (0.0, 0.0, -0.036), 167: (0.039, 0.0, 0.135), 168: (-0.039, 0.0, 0.135), 169: (0.041, 0.0, 0.0), 170: (-0.041, 0.0, 0.0), 171: (0.036, 0.0, 0.0), 172: (-0.036, 0.0, 0.0), 184: (0.035, -0.056, 0.135), 185: (-0.035, -0.056, 0.135), 216: (0.0, -0.001, 0.055), 217: (0.092, -0.001, 0.055), 218: (-0.092, -0.001, 0.055), 219: (0.102, 0.0, 0.087), 220: (-0.102, 0.0, 0.087), 221: (0.102, 0.0, 0.084), 222: (-0.102, 0.0, 0.084), 223: (0.0, 0.178, 0.243), 224: (0.104, 0.175, 0.186), 225: (-0.104, 0.175, 0.186), 226: (0.102, 0.0, 0.087), 227: (-0.102, 0.0, 0.087), 228: (0.135, 0.185, 0.044), 229: (-0.135, 0.185, 0.044), 230: (0.0, 0.185, 0.042)}
 	for vidx in monkey_mod:
 		ob.data.vertices[vidx].co += mathutils.Vector(monkey_mod[vidx])
 
@@ -1591,10 +1733,11 @@ def test_scene( test_materials=True, test_twist=False ):
 	bpy.ops.object.join()
 
 
-	a = bpy.data.texts.new(name='example1.c3')
-	a.from_string(EXAMPLE1)
-	ob.c3_script0 = a
-	ob['my_prop'] = 0.01
+	if spin_script:
+		a = bpy.data.texts.new(name='example1.c3')
+		a.from_string(EXAMPLE1)
+		ob.c3_script0 = a
+		ob['my_prop'] = 0.01
 	ob.color = [.7,.5,.5, 1.0]
 
 	if test_materials:
