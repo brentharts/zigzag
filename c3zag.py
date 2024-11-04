@@ -325,7 +325,8 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 	}
 
 	gl_bind_buffer(i){
-		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.bufs[i])
+		this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.bufs[i]);
+		this.vbuf=this.bufs[i]
 	}
 	gl_bind_buffer_element(i){
 		this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER,this.bufs[i])
@@ -358,7 +359,8 @@ JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 			var m=this.mods[j];
 			v=this[m.op](v,m)
 		}
-		this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(v), this.gl.STATIC_DRAW)
+		this.vbuf._arr_=new Float32Array(v);
+		this.gl.bufferData(this.gl.ARRAY_BUFFER,this.vbuf._arr_,this.gl.STATIC_DRAW)
 	}
 
 	gl_buffer_f8(i,sz,ptr){
@@ -615,12 +617,68 @@ for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
 		bpy.props.PointerProperty(name="script%s" % i, type=bpy.types.Text),
 	)
 	setattr(
+		bpy.types.Material,
+		"c3_script" + str(i),
+		bpy.props.PointerProperty(name="script%s" % i, type=bpy.types.Text),
+	)
+	setattr(
 		bpy.types.Object,
 		"c3_script%s_disable" %i,
 		bpy.props.BoolProperty(name="disable"),
 	)
+	setattr(
+		bpy.types.Material,
+		"c3_script%s_disable" %i,
+		bpy.props.BoolProperty(name="disable"),
+	)
+
+bpy.types.Material.c3_object_type = bpy.props.EnumProperty(
+	name='type',
+	items=[
+		("NONE", "none", "no type"), 
+		("UPPER_LIP", "upper lip", "material is upper lip of mouth"), 
+		("LOWER_LIP", "lower lip", "material is lower lip of mouth"), 
+		("UPPER_EYELID", "upper eyelid", "material is upper lid of eyes"), 
+		("LOWER_EYELID", "lower eyelid", "material is lower lid of eyes"), 
+		("EYES", "pupil", "material is pulil of eyes"), 
+	]
+)
 
 bpy.types.Object.c3_hide = bpy.props.BoolProperty( name="hidden on spawn")
+
+@bpy.utils.register_class
+class C3MaterialPanel(bpy.types.Panel):
+	bl_idname = "OBJECT_PT_C3_Material_Panel"
+	bl_label = "C3 Materials"
+	bl_space_type = "PROPERTIES"
+	bl_region_type = "WINDOW"
+	bl_context = "material"
+
+	def draw(self, context):
+		if not context.active_object: return
+		ob = context.active_object
+
+		self.layout.label(text="C3 Material Scripts")
+		for mat in ob.data.materials:
+			if not mat: continue
+			box = self.layout.box()
+			row = box.row()
+			row.prop(mat, 'diffuse_color', text=mat.name.upper())
+			row.prop(mat, 'c3_object_type')
+
+			foundUnassignedScript = False
+			for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
+				hasProperty = (
+					getattr(mat, "c3_script" + str(i)) != None
+				)
+				if hasProperty or not foundUnassignedScript:
+					row = box.row()
+					row.prop(mat, "c3_script" + str(i))
+					if hasProperty:
+						row.prop(mat, "c3_script%s_disable"%i)
+				if not foundUnassignedScript:
+					foundUnassignedScript = not hasProperty
+
 
 @bpy.utils.register_class
 class C3ObjectPanel(bpy.types.Panel):
@@ -634,7 +692,9 @@ class C3ObjectPanel(bpy.types.Panel):
 		if not context.active_object: return
 		ob = context.active_object
 
-		self.layout.label(text="Attach C3 Scripts")
+		#self.layout.prop(ob, 'c3_hide')  ## TODO
+
+		self.layout.label(text="C3 Object Scripts")
 		foundUnassignedScript = False
 		for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
 			hasProperty = (
@@ -643,7 +703,8 @@ class C3ObjectPanel(bpy.types.Panel):
 			if hasProperty or not foundUnassignedScript:
 				row = self.layout.row()
 				row.prop(ob, "c3_script" + str(i))
-				row.prop(ob, "c3_script%s_disable"%i)
+				if hasProperty:
+					row.prop(ob, "c3_script%s_disable"%i)
 			if not foundUnassignedScript:
 				foundUnassignedScript = not hasProperty
 
@@ -883,12 +944,16 @@ void main(void){
 
 '''
 
-def is_mesh_sym(ob):
+def is_mesh_sym(ob, strict=False):
 	left  = []
 	right = []
 	mid   = []
 	for v in ob.data.vertices:
 		x,y,z = v.co
+		if not strict:
+			x = round(x,4)
+			y = round(y,4)
+			z = round(z,4)
 		if x==0:
 			mid.append((x,y,z))
 		elif x < 0:
@@ -948,14 +1013,18 @@ def blender_to_c3(world):
 					draw.append( s )
 
 
-
-			is_symmetric = is_mesh_sym(ob)  ## TODO this should check for a user added mirror mod on x
-
+			if '--disable-sym' in sys.argv:
+				is_symmetric = False
+			else:
+				is_symmetric = is_mesh_sym(ob)  ## TODO this should check for a user added mirror mod on x
 			if is_symmetric:
 				bpy.ops.object.mode_set(mode="EDIT")
 				bpy.ops.object.automirror()
 				bpy.ops.object.mode_set(mode="OBJECT")
 				ob.modifiers[0].use_mirror_merge=False
+
+			if not is_symmetric:
+				raise RuntimeError('mesh is not symmetric:%s' %ob.name)
 
 
 			if ob.modifiers:
@@ -1495,23 +1564,95 @@ EXAMPLE1 = '''
 rotateY( self.matrix, self.my_prop );
 '''
 
-def test_scene( test_materials=True ):
-	ob = bpy.data.objects['Cube']
-	ob.hide_set(True)
+def test_scene( test_materials=True, test_twist=False ):
+	cu = bpy.data.objects['Cube']
+	cu.data.materials.clear()
+	#cu.hide_set(True)
+	cu.scale *= 0.04
+	#cu.location = [-0.144, -0.69, -0.66]
+	cu.location = [-0.144, -0.62, -0.66]
+	mod = cu.modifiers.new(name='array',type='ARRAY')
+	mod.relative_offset_displace[0] = 1.2
+	mod.count=4
+	bpy.ops.object.modifier_apply(modifier='array')
+	mod = cu.modifiers.new(name='array',type='ARRAY')
+	mod.relative_offset_displace[0] = 0
+	mod.relative_offset_displace[2] = -1.9
+	bpy.ops.object.modifier_apply(modifier='array')
 
 	bpy.ops.mesh.primitive_monkey_add()
 	ob = bpy.context.active_object
-	a = bpy.data.texts.new(name='example1.zig')
+
+	monkey_mod = {0: (0.002, 0.07, -0.004), 1: (-0.002, 0.07, -0.004), 2: (-0.013, 0.065, 0.015), 3: (0.013, 0.065, 0.015), 4: (-0.027, 0.041, 0.025), 5: (0.027, 0.041, 0.025), 6: (0.0, 0.048, 0.035), 7: (0.0, 0.048, 0.035), 8: (0.0, 0.069, 0.021), 9: (0.0, 0.069, 0.021), 10: (0.001, 0.068, -0.007), 11: (-0.001, 0.068, -0.007), 12: (-0.004, 0.069, -0.004), 13: (0.004, 0.069, -0.004), 14: (0.014, 0.071, 0.015), 15: (-0.014, 0.071, 0.015), 16: (0.027, 0.052, 0.025), 17: (-0.027, 0.052, 0.025), 18: (0.036, 0.052, 0.001), 19: (-0.036, 0.052, 0.001), 20: (0.021, 0.067, 0.0), 21: (-0.021, 0.067, 0.0), 22: (-0.007, 0.067, 0.001), 23: (0.007, 0.067, 0.001), 24: (-0.004, 0.069, 0.002), 25: (0.004, 0.069, 0.002), 26: (0.014, 0.071, -0.013), 27: (-0.014, 0.071, -0.013), 28: (0.027, 0.052, -0.027), 29: (-0.027, 0.052, -0.027), 30: (0.0, 0.048, -0.036), 31: (0.0, 0.048, -0.036), 32: (0.0, 0.069, -0.02), 33: (0.0, 0.069, -0.02), 34: (0.001, 0.068, 0.006), 35: (-0.001, 0.068, 0.006), 36: (0.002, 0.07, 0.002), 37: (-0.002, 0.07, 0.002), 38: (-0.013, 0.065, -0.013), 39: (0.013, 0.065, -0.013), 40: (-0.027, 0.041, -0.027), 41: (0.027, 0.041, -0.027), 42: (-0.036, 0.04, 0.001), 43: (0.036, 0.04, 0.001), 44: (-0.02, 0.062, 0.0), 45: (0.02, 0.062, 0.0), 46: (0.005, 0.07, 0.001), 47: (-0.005, 0.07, 0.001), 48: (-0.024, 0.056, 0.001), 49: (0.024, 0.056, 0.001), 50: (-0.021, 0.057, -0.02), 51: (0.021, 0.057, -0.02), 52: (0.001, 0.064, -0.028), 53: (-0.001, 0.064, -0.028), 54: (0.018, 0.067, -0.02), 55: (-0.018, 0.067, -0.02), 56: (0.027, 0.065, 0.001), 57: (-0.027, 0.065, 0.001), 58: (0.018, 0.067, 0.018), 59: (-0.018, 0.067, 0.018), 60: (0.001, 0.077, 0.001), 61: (-0.001, 0.077, 0.001), 62: (0.001, 0.064, 0.027), 63: (-0.001, 0.064, 0.027), 64: (-0.021, 0.057, 0.018), 65: (0.021, 0.057, 0.018), 68: (0.0, -0.056, 0.135), 71: (0.0, 0.0, 0.136), 113: (0.0, 0.0, -0.064), 114: (0.0, 0.0, -0.064), 115: (0.0, 0.0, -0.036), 116: (0.0, 0.0, -0.036), 129: (0.0, -0.067, 0.136), 130: (0.119, -0.067, 0.084), 131: (-0.119, -0.067, 0.084), 132: (0.127, 0.0, 0.084), 133: (-0.127, 0.0, 0.084), 134: (0.123, -0.041, 0.0), 135: (-0.123, -0.041, 0.0), 136: (0.0, -0.041, 0.0), 145: (0.0, 0.0, -0.036), 146: (0.0, 0.0, -0.036), 167: (0.039, 0.0, 0.135), 168: (-0.039, 0.0, 0.135), 169: (0.041, 0.0, 0.0), 170: (-0.041, 0.0, 0.0), 171: (0.036, 0.0, 0.0), 172: (-0.036, 0.0, 0.0), 184: (0.035, -0.056, 0.135), 185: (-0.035, -0.056, 0.135), 216: (0.0, -0.001, 0.055), 217: (0.092, -0.001, 0.055), 218: (-0.092, -0.001, 0.055), 219: (0.102, 0.0, 0.087), 220: (-0.102, 0.0, 0.087), 221: (0.102, 0.0, 0.084), 222: (-0.102, 0.0, 0.084), 223: (0.0, 0.178, 0.243), 224: (0.104, 0.175, 0.186), 225: (-0.104, 0.175, 0.186), 226: (0.102, 0.0, 0.087), 227: (-0.102, 0.0, 0.087), 228: (0.135, 0.185, 0.044), 229: (-0.135, 0.185, 0.044), 230: (0.0, 0.185, 0.042), 257: (0.0, 0.055, 0.0), 258: (0.0, 0.055, 0.0), 259: (0.0, 0.055, 0.0), 260: (0.0, 0.055, 0.0), 261: (0.0, 0.055, 0.0), 262: (0.0, 0.055, 0.0), 263: (0.0, 0.055, 0.0), 264: (0.0, 0.055, 0.0), 265: (0.0, 0.055, 0.0), 266: (0.0, 0.055, 0.0), 267: (0.0, 0.055, 0.0), 268: (0.0, 0.055, 0.0), 269: (0.0, 0.055, 0.0), 270: (0.0, 0.055, 0.0), 271: (0.0, 0.055, 0.0), 272: (0.0, 0.055, 0.0), 273: (0.0, 0.055, 0.0), 274: (0.0, 0.055, 0.0), 275: (0.0, 0.055, 0.0), 276: (0.0, 0.055, 0.0), 277: (0.0, 0.055, 0.0), 278: (0.0, 0.055, 0.0), 279: (0.0, 0.055, 0.0), 280: (0.0, 0.055, 0.0), 281: (0.0, 0.055, 0.0), 282: (0.0, 0.055, 0.0)}
+	for vidx in monkey_mod:
+		ob.data.vertices[vidx].co += mathutils.Vector(monkey_mod[vidx])
+
+	cu.select_set(True)
+	bpy.ops.object.join()
+
+
+	a = bpy.data.texts.new(name='example1.c3')
 	a.from_string(EXAMPLE1)
 	ob.c3_script0 = a
 	ob['my_prop'] = 0.01
 	ob.color = [.7,.5,.5, 1.0]
 
 	if test_materials:
-		for i in range(3):
-			mat = bpy.data.materials.new(name='%s'%i)
-			mat.diffuse_color = [random(), random(), random(), 1]
-			ob.data.materials.append(mat)
+		mat = bpy.data.materials.new(name='skin')
+		mat.diffuse_color = [uniform(0.4,0.8), uniform(0.2,0.5), uniform(0.3,0.6), 1]
+		ob.data.materials.append(mat)
+
+		mat = bpy.data.materials.new(name='pupil')
+		mat.diffuse_color = [uniform(0,0.3), uniform(0,0.3), uniform(0,0.5), 1]
+		ob.data.materials.append(mat)
+		mat.c3_object_type = "EYES"
+
+		mat = bpy.data.materials.new(name='eye')
+		mat.diffuse_color = [uniform(0.8,1), uniform(0.8,1), uniform(0.8,1), 1]
+		ob.data.materials.append(mat)
+
+
+		mat = bpy.data.materials.new(name='lower-theeth')
+		mat.diffuse_color = [uniform(0.8,1), uniform(0.8,1), uniform(0.8,1), 1]
+		ob.data.materials.append(mat)
+
+
+		mat = bpy.data.materials.new(name='hair')
+		mat.diffuse_color = [uniform(0.4,0.8), uniform(0.2,0.5), uniform(0.3,0.6), 1]
+		ob.data.materials.append(mat)
+
+		mat = bpy.data.materials.new(name='mouth')
+		mat.diffuse_color = [uniform(0.3,0.8), uniform(0,0.1), uniform(0.1,0.3), 1]
+		ob.data.materials.append(mat)
+
+		mat = bpy.data.materials.new(name='black')
+		mat.diffuse_color = [0,0,0, 1]
+		ob.data.materials.append(mat)
+
+		mat = bpy.data.materials.new(name='upper-theeth')
+		s = 0.5
+		mat.diffuse_color = [uniform(0.8,1)*s, uniform(0.8,1)*s, uniform(0.8,1)*s, 1]
+		ob.data.materials.append(mat)
+
+		mat = bpy.data.materials.new(name='lower-lip')
+		mat.diffuse_color = [uniform(0.5,0.9), uniform(0.1,0.3), uniform(0.2,0.5), 1]
+		ob.data.materials.append(mat)
+		mat.c3_object_type = "LOWER_LIP"
+
+		mat = bpy.data.materials.new(name='eye-lids')
+		mat.diffuse_color = [uniform(0.4,0.8), uniform(0.2,0.5), uniform(0.3,0.6), 1]
+		ob.data.materials.append(mat)
+
+		mat = bpy.data.materials.new(name='eye-lids-upper')
+		mat.diffuse_color = [uniform(0.1,0.3), uniform(0,0.1), uniform(0,0.1), 1]
+		ob.data.materials.append(mat)
+		mat.c3_object_type = "UPPER_EYELID"
+
+		mat = bpy.data.materials.new(name='eye-lids-lower')
+		mat.diffuse_color = [uniform(0.2,0.5), uniform(0,0.3), uniform(0,0.3), 1]
+		ob.data.materials.append(mat)
+		mat.c3_object_type = "LOWER_EYELID"
+
 
 		## eyes
 		for poly in ob.data.polygons[0:64]:
@@ -1519,21 +1660,77 @@ def test_scene( test_materials=True ):
 		for poly in ob.data.polygons[0:32]:
 			poly.material_index=2
 
+		## head
+		for poly in ob.data.polygons[-300:]:
+			poly.material_index=4
+
+		## ears
+		#for poly in ob.data.polygons[-100:]:
+		#	poly.material_index=5
+		#for poly in ob.data.polygons[150:200]:
+
+		## mouth
+		for poly in ob.data.polygons[170:194]:
+			poly.material_index=5
+
+		## upper lip
+		#for poly in ob.data.polygons[170:178]:
+		#	poly.material_index=6
+		## lower lip
+		for poly in ob.data.polygons[178:182]:
+			poly.material_index=8
+
+
+		## back of mouth - black
+		ob.data.polygons[190].material_index=6
+		ob.data.polygons[191].material_index=6
+
+		## fixes side of nose
+		for poly in ob.data.polygons[170:174]:
+			poly.material_index=0
+
+
+		## upper theeth
+		for poly in ob.data.polygons[-48:]:
+			poly.material_index=7
+
+		## lower theeth
+		for poly in ob.data.polygons[-24:]:
+			poly.material_index=3
+
+		## eye lids
+		for poly in ob.data.polygons[192:246]:
+			poly.material_index=9
+
+		## uppe eye lids
+		for poly in ob.data.polygons[220:230]:
+			poly.material_index=10
+		#ob.data.polygons[240].material_index=6
+
+		for poly in ob.data.polygons[202:206]:
+			poly.material_index=11
+
 	if 0:
 		bpy.ops.object.mode_set(mode="EDIT")
 		#bpy.ops.mesh.sort_elements(type="MATERIAL", elements={"FACE"} )  ## bigger
 		bpy.ops.mesh.sort_elements(type="MATERIAL", elements={"VERT"} )   ## smaller
 		bpy.ops.object.mode_set(mode="OBJECT")
 
+	if '--debug-rig' in sys.argv:
+		return
+
+
 	ob.rotation_euler.x = -math.pi/2
 	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
-	mod = ob.modifiers.new(name="twist-x", type="SIMPLE_DEFORM")
-	mod.angle = math.pi * 0.5
+	if test_twist:
 
-	mod = ob.modifiers.new(name="twist-y", type="SIMPLE_DEFORM")
-	mod.angle = -math.pi * 0.25
-	mod.deform_axis="Y"
+		mod = ob.modifiers.new(name="twist-x", type="SIMPLE_DEFORM")
+		mod.angle = math.pi * 0.5
+
+		mod = ob.modifiers.new(name="twist-y", type="SIMPLE_DEFORM")
+		mod.angle = -math.pi * 0.25
+		mod.deform_axis="Y"
 
 	#mod = ob.modifiers.new(name="sphere", type="CAST")
 	#mod.factor = -1
@@ -1541,4 +1738,5 @@ def test_scene( test_materials=True ):
 
 if __name__=='__main__':
 	test_scene()
-	build_wasm(bpy.data.worlds[0])
+	if '--no-wasm-test' in sys.argv: pass
+	else: build_wasm(bpy.data.worlds[0])
