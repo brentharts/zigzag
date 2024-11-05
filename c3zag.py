@@ -433,17 +433,6 @@ for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
 		bpy.props.BoolProperty(name="disable"),
 	)
 
-bpy.types.Material.c3_object_type = bpy.props.EnumProperty(
-	name='type',
-	items=[
-		("NONE", "none", "no type"), 
-		("UPPER_LIP", "upper lip", "material is upper lip of mouth"), 
-		("LOWER_LIP", "lower lip", "material is lower lip of mouth"), 
-		("UPPER_EYELID", "upper eyelid", "material is upper lid of eyes"), 
-		("LOWER_EYELID", "lower eyelid", "material is lower lid of eyes"), 
-		("EYES", "pupil", "material is pulil of eyes"), 
-	]
-)
 
 bpy.types.Object.c3_hide = bpy.props.BoolProperty( name="hidden on spawn")
 
@@ -465,7 +454,7 @@ class C3MaterialPanel(bpy.types.Panel):
 			box = self.layout.box()
 			row = box.row()
 			row.prop(mat, 'diffuse_color', text=mat.name.upper())
-			row.prop(mat, 'c3_object_type')
+			row.prop(mat, 'zigzag_object_type')
 
 			foundUnassignedScript = False
 			for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
@@ -1221,10 +1210,10 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 				indices.append(str(p.vertices[0]))
 				num_i += 3
 
-	print(indices)
-	for midx in indices_by_mat:
-		print('material_index:', midx)
-		print(indices_by_mat[midx])
+	#print(indices)
+	#for midx in indices_by_mat:
+	#	print('material_index:', midx)
+	#	print(indices_by_mat[midx])
 
 	if len(indices_by_mat) > 1:
 		for midx in indices_by_mat:
@@ -1389,13 +1378,13 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 		lower_eyelid = None
 		for midx in indices_by_mat:
 			mat = ob.data.materials[midx]
-			if mat.c3_object_type == "LOWER_EYELID":
+			if mat.zigzag_object_type == "LOWER_EYELID":
 				lower_eyelid=midx
 				break
 
 		for midx in indices_by_mat:
 			mat = ob.data.materials[midx]
-			if mat.c3_object_type != "NONE":
+			if mat.zigzag_object_type != "NONE":
 				draw += [
 					'bool needs_upload=false;'
 				]
@@ -1410,15 +1399,15 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 
 		for midx in indices_by_mat:
 			mat = ob.data.materials[midx]
-			if mat.c3_object_type != "NONE":
-				if mat.c3_object_type=="LOWER_LIP":
+			if mat.zigzag_object_type != "NONE":
+				if mat.zigzag_object_type=="LOWER_LIP":
 					draw += [
 						'if(js_rand() < 0.06){',
 						'	gl_trans(%s_%s_ibuff,0, (js_rand()-0.25)*0.1 ,0);' % (name,midx),
 						'	needs_upload=true;',
 						'}',
 					]
-				elif mat.c3_object_type=="EYES":
+				elif mat.zigzag_object_type=="EYES":
 					draw += [
 						'if(js_rand() < 0.03){',
 						'	eyes_x=(js_rand()-0.5)*0.05;',
@@ -1436,7 +1425,7 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 
 					draw.append('}')
 
-				elif mat.c3_object_type=="UPPER_EYELID":
+				elif mat.zigzag_object_type=="UPPER_EYELID":
 					draw += [
 						'if(js_rand() < 0.06 || needs_upload){',
 						'	gl_trans(%s_%s_ibuff, eyes_x*0.2, ((js_rand()-0.7)*0.07)+(eyes_y*0.2) ,0.05);' % (name,midx),
@@ -1465,8 +1454,8 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 			draw.append('gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx))
 			mat = ob.data.materials[midx]
 
-			#if mat.c3_object_type in ('LOWER_LIP', 'LOWER_EYELID'):
-			#if mat.c3_object_type != "NONE":
+			#if mat.zigzag_object_type in ('LOWER_LIP', 'LOWER_EYELID'):
+			#if mat.zigzag_object_type != "NONE":
 			#	draw.append(
 			#		'gl_material_translate(%s_%s_ibuff, %s_vbuff, %s,%s,%s);'%(
 			#			name,midx, name, 0,0.07,0
