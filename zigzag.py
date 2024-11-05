@@ -473,6 +473,7 @@ extern fn gl_vertex_attr_pointer(loc:c_int, n:c_int) void;
 extern fn gl_use_program(prog:c_int) void;
 
 extern fn gl_draw_tris_tint(len:c_int, r:f32, g:f32, b:f32) void;
+extern fn gl_uniform_mat4fv(loc:c_int, mat:[*]f32) void;
 
 
 
@@ -739,11 +740,18 @@ def build_wasm(world):
 	#print(zig)
 	build(zig)
 
+DEBUG_CAMERA = '''
+var proj_matrix : [16]f32 = .{1.3737387097273113,0,0,0,0,1.8316516129697482,0,0,0,0,-1.02020202020202,-1,0,0,-2.0202020202020203,0};
+var view_matrix : [16]f32 = .{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+'''
+
+
 def blender_to_zig_webgl(world):
 	header = [
 		ZIG_SHADER_HEADER,
 		ZIG_HEADER_WEBGL,
 		gen_shaders(),
+		DEBUG_CAMERA,
 	]
 	data = []
 	setup = []
@@ -762,8 +770,8 @@ def blender_to_zig_webgl(world):
 
 	update = [
 		'export fn update() void {',
-		#'	gl_uniform_mat4fv(ploc, proj_matrix);',
-		#'	gl_uniform_mat4fv(vloc, view_matrix);',
+		'	gl_uniform_mat4fv(ploc, &proj_matrix);',
+		'	gl_uniform_mat4fv(vloc, &view_matrix);',
 
 	] + draw
 	update.append('}')
@@ -772,7 +780,9 @@ def blender_to_zig_webgl(world):
 	main = [
 		'export fn main() void {',
 		'	gl_init(800, 600);',
+		# error: binary operator `-` has whitespace on one side, but not the other.
 		#'	view_matrix[14] = view_matrix[14] -3.0;',
+		'	view_matrix[14] = view_matrix[14] - 3.0;',
 		ZIG_SHADER_SETUP,
 	] + ['\t'+ln for ln in setup] + [
 		'	gl_use_program(prog);',
@@ -920,6 +930,12 @@ def mesh_to_zig(ob, mirror=False):
 			'gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx),
 			'gl_buffer_element(%s, INDICES_%s_%s.len, &INDICES_%s_%s);' %(mirror, sname,midx, sname,midx),
 		]
+
+	draw += [
+		'gl_bind_buffer(%s_vbuff);' % name,
+		'gl_uniform_mat4fv(mloc, &%s_mat);' % name,  ## update object matrix uniform
+	]
+
 
 	for midx in indices_by_mat:
 		num = indices_by_mat[midx]['num']
