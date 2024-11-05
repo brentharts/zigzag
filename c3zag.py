@@ -1210,11 +1210,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 				indices.append(str(p.vertices[0]))
 				num_i += 3
 
-	#print(indices)
-	#for midx in indices_by_mat:
-	#	print('material_index:', midx)
-	#	print(indices_by_mat[midx])
-
 	if len(indices_by_mat) > 1:
 		for midx in indices_by_mat:
 			mi = [str(v).replace('(','').replace(')','').replace(' ', '') for v in indices_by_mat[midx]['indices']]
@@ -1259,12 +1254,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 		for vec in ob.matrix_local:
 			mat += [str(v) for v in vec]
 
-		data += [
-		#'int %s_mirror_vbuff;' % name,
-		#'float[] %s_mirror_mat={%s};' %(name,','.join(mat)),
-
-		]
-
 	setup = [
 		'%s_vbuff = gl_new_buffer();' % name,
 		'gl_bind_buffer(%s_vbuff);' % name,
@@ -1286,23 +1275,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 			#'gl_buffer_data(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 			#'gl_buffer_f16(%s_cbuff, COLORS_%s.len, COLORS_%s);' %(name, sname,sname),
 		]
-
-	if mirror and 0:
-		#wasm-ld: error: /tmp/test-c3.o: undefined symbol: __extendhfsf2
-		#wasm-ld: error: /tmp/test-c3.o: undefined symbol: __truncsfhf2
-		if False:
-			## TODO how big is it to link with stdlib and the float16 funcs?
-			setup += [
-			'%s_mirror_vbuff = gl_new_buffer();' % name,
-			'gl_bind_buffer(%s_mirror_vbuff);' % name,
-			'for (int i=0; i<VERTS_%s.len; i+=3){' %sname,
-			'	verts_mirror_%s[i] = -VERTS_%s[i];' % (name,sname),
-			'	verts_mirror_%s[i+1] = VERTS_%s[i+1];' % (name,sname),
-			'	verts_mirror_%s[i+2] = VERTS_%s[i+2];' % (name,sname),
-			'}',
-			'gl_buffer_f16(%s_mirror_vbuff, verts_mirror_%s.len, &verts_mirror_%s);' %(name, name,name),
-
-			]
 
 	if use_vertex_colors:
 		if '--Oz' in sys.argv and '--icolor' in sys.argv:
@@ -1328,8 +1300,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 			'gl_enable_vertex_attr_array(clrloc);',
 		]
 
-
-
 	if len(indices_by_mat) > 1:
 		for midx in indices_by_mat:
 			setup += [
@@ -1354,19 +1324,10 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 				'gl_buffer_element(%s, INDICES_%s.len, INDICES_%s);' %(mirror, sname,sname),
 			]
 		
-
-
 	draw = [
 		'gl_bind_buffer(%s_vbuff);' % name,
-
 		#'gl_vertex_attr_pointer(posloc, 3);',
 		#'gl_enable_vertex_attr_array(posloc);',
-
-
-		#'gl_bind_buffer(%s_cbuff);' % name,
-
-		#'rotateZ(%s_mat, 15.0);' % name,
-
 		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
 		#'gl_bind_buffer_element(%s_ibuff);' % name,
 		#'gl_draw_triangles( INDICES_%s.len );' % sname,
@@ -1416,7 +1377,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 						#'	gl_trans(%s_%s_ibuff, (js_rand()-0.5)*0.05,(js_rand()-0.5)*0.01,0);' % (name,midx),
 						'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
 						'	needs_upload=true;',
-						#'}',
 					]
 					if lower_eyelid is not None:
 						draw += [
@@ -1435,12 +1395,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 
 				needs_upload = True
 
-				#draw.append(
-				#	'gl_trans(%s_%s_ibuff, %s,%s,%s);'%(
-				#		name,midx, 0, 0.05, 0
-				#	)
-				#)
-
 		if needs_upload:
 			draw.append(
 				'if(needs_upload) { gl_trans_upload(%s_vbuff); }' % name
@@ -1453,15 +1407,6 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 			num = indices_by_mat[midx]['num']
 			draw.append('gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx))
 			mat = ob.data.materials[midx]
-
-			#if mat.zigzag_object_type in ('LOWER_LIP', 'LOWER_EYELID'):
-			#if mat.zigzag_object_type != "NONE":
-			#	draw.append(
-			#		'gl_material_translate(%s_%s_ibuff, %s_vbuff, %s,%s,%s);'%(
-			#			name,midx, name, 0,0.07,0
-			#		)
-			#	)
-
 			r,g,b,a = mat.diffuse_color
 			if mirror:
 				draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num*2,r,g,b))
@@ -1493,7 +1438,6 @@ rotateY( self.matrix, self.my_prop );
 def test_scene( test_materials=True, test_twist=False, spin_script=False ):
 	cu = bpy.data.objects['Cube']
 	cu.hide_set(True)
-	#cu.data.materials.clear()
 	ob = libgenzag.monkey(materials=test_materials)
 
 	if spin_script:
@@ -1509,10 +1453,6 @@ def test_scene( test_materials=True, test_twist=False, spin_script=False ):
 		bpy.ops.mesh.sort_elements(type="MATERIAL", elements={"VERT"} )   ## smaller
 		bpy.ops.object.mode_set(mode="OBJECT")
 
-	if '--debug-rig' in sys.argv:
-		return
-
-
 	ob.rotation_euler.x = -math.pi/2
 	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
@@ -1524,10 +1464,6 @@ def test_scene( test_materials=True, test_twist=False, spin_script=False ):
 		mod = ob.modifiers.new(name="twist-y", type="SIMPLE_DEFORM")
 		mod.angle = -math.pi * 0.25
 		mod.deform_axis="Y"
-
-	#mod = ob.modifiers.new(name="sphere", type="CAST")
-	#mod.factor = -1
-
 
 if __name__=='__main__':
 	test_scene()
