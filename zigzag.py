@@ -1,12 +1,86 @@
 #!/usr/bin/python3
 import os, sys, subprocess, base64, webbrowser, zipfile
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
-if _thisdir not in sys.path: sys.path.append(_thisdir)
+if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 import libwebzag
 import libgenzag
 
-GZIP = 'gzip'
+if '-gui' in sys.argv:
+	try:
+		import PySide6
+	except:
+		if sys.platform=='win32':
+			cmd=['python', '-m', 'pip', 'install', 
+			#'PySide6'
+			'PySide6-Essentials'
+			]
+			subprocess.check_call(cmd)
 
+	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
+
+	class Window(QWidget):
+		def on_click(self):
+			cmd = [self.blenders[-1]]
+			for arg in sys.argv:
+				if arg.endswith('.blend'):
+					cmd.append(arg)
+					break
+			cmd +=['--python-exit-code', '1', '--python', __file__]
+			exargs = []
+			for arg in sys.argv:
+				if arg.startswith('--'):
+					exargs.append(arg)
+			if exargs:
+				cmd.append('--')
+				cmd += exargs
+			print(cmd)
+			subprocess.check_call(cmd)
+
+		def __init__(self):
+			super().__init__()
+			self.blenders = []
+			self.resize(250, 150)
+			self.setWindowTitle('ZigZag')
+
+			# Create two buttons
+			button_ok = QPushButton("OK")
+			button_ok.clicked.connect(self.on_click)
+			button_cancel = QPushButton("Cancel")
+
+			hbox = QHBoxLayout()
+			hbox.addStretch(1)
+			hbox.addWidget(button_ok)
+			hbox.addWidget(button_cancel)
+
+			vbox = QVBoxLayout()
+			if sys.platform=='win32':
+				pfiles = 'C:\\Program Files\\Blender Foundation'
+				if os.path.isdir(pfiles):
+					for name in os.listdir(pfiles):
+						if 'Blender' in name:
+							bpath = os.path.join(pfiles,name)
+							print(os.listdir(bpath))
+							if 'blender.exe' in os.listdir(bpath):
+								b=os.path.join(bpath,'blender.exe')
+								self.blenders.append(b)
+								vbox.addWidget(QLabel(b))
+				if not self.blenders:
+					vbox.addWidget(QLabel('ERROR: blender not installed'))
+
+
+			vbox.addStretch(1)
+			vbox.addLayout(hbox)
+
+			# Add vertical layout to window
+			self.setLayout(vbox)
+
+	app = QApplication(sys.argv)
+	window = Window()
+	window.show()
+	sys.exit( app.exec() )
+
+
+GZIP = 'gzip'
 zigzip=zigxz=None
 if sys.platform == 'win32':
 	BLENDER = 'C:/Program Files/Blender Foundation/Blender 4.2/blender.exe'
@@ -16,6 +90,7 @@ if sys.platform == 'win32':
 	zigzip = 'https://ziglang.org/download/0.13.0/zig-windows-x86_64-0.13.0.zip'
 	ZIG = os.path.join(_thisdir, 'zig-windows-x86_64-0.13.0/zig.exe')
 	GZIP = os.path.abspath(os.path.join(_thisdir,'gzip.exe'))
+	FIREFOX = '/Program Files/Mozilla Firefox/firefox.exe'
 	if not os.path.isdir('/tmp'): os.mkdir('/tmp')
 elif sys.platform == 'darwin':
 	BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
@@ -261,7 +336,12 @@ def build(zig, memsize=4, jsapi=JS_API):
 
 	out = 'zigzag-preview.html'
 	open(out,'w').write('\n'.join(o))
-	webbrowser.open(out)
+	if sys.platform=='win32' and os.path.isfile(FIREFOX):
+		## FireFox has Float16Array support
+		subprocess.Popen([FIREFOX, '-url', out])
+	else:
+		## on linux assume that firefox is default browser
+		webbrowser.open(out)
 
 	if sys.platform!='win32':
 		cmd = ['zip', '-9', 'zigzag-preview.zip', 'zigzag-preview.html']
