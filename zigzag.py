@@ -3,6 +3,8 @@ import os, sys, subprocess, base64, webbrowser, zipfile
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.append(_thisdir)
 import libwebzag
+import libgenzag
+
 GZIP = 'gzip'
 
 zigzip=zigxz=None
@@ -202,10 +204,13 @@ def wasm_opt(wasm):
 	return o
 
 
-def build(zig, memsize=4):
-	name = 'test-wasm-foo'
+def build(zig, memsize=4, jsapi=JS_API):
+	name = 'test-zig'
 	tmp = '/tmp/%s.zig' % name
-	open(tmp, 'w').write(zig)
+	if type(zig) is list:
+		open(tmp, 'w').write('\n'.join(zig))
+	else:
+		open(tmp, 'w').write(zig)
 	cmd = [
 		ZIG, 'build-exe', 
 		'-O', 'ReleaseSmall', 
@@ -232,7 +237,7 @@ def build(zig, memsize=4):
 	b = base64.b64encode(w).decode('utf-8')
 
 	jtmp = '/tmp/zigapi.js'
-	open(jtmp,'w').write(JS_API)
+	open(jtmp,'w').write(jsapi)
 	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', jtmp]
 	print(cmd)
 	subprocess.check_call(cmd)
@@ -367,13 +372,24 @@ def register():
 
 	@bpy.utils.register_class
 	class ZigExport(bpy.types.Operator):
-		bl_idname = "zig.export_wasm"
-		bl_label = "Zig Export WASM"
+		bl_idname = "zig.export_2d"
+		bl_label = "Zig Export WASM (Canvas 2D)"
 		@classmethod
 		def poll(cls, context):
 			return True
 		def execute(self, context):
 			build_wasm(context.world)
+			return {"FINISHED"}
+
+	@bpy.utils.register_class
+	class ZigExportWebGL(bpy.types.Operator):
+		bl_idname = "zig.export_3d"
+		bl_label = "Zig Export WASM (WebGL)"
+		@classmethod
+		def poll(cls, context):
+			return True
+		def execute(self, context):
+			build_webgl(context.world)
 			return {"FINISHED"}
 
 
@@ -386,7 +402,8 @@ def register():
 		bl_context = "world"
 
 		def draw(self, context):
-			self.layout.operator("zig.export_wasm", icon="CONSOLE")
+			self.layout.operator("zig.export_2d", icon="CONSOLE")
+			self.layout.operator("zig.export_3d", icon="CONSOLE")
 
 
 def safename(ob):
@@ -415,6 +432,14 @@ def calc_stroke_width(stroke):
 	sw /= len(stroke.points)
 	return sw * stroke.line_width * 0.05
 
+ZIG_HEADER_WEBGL = '''
+const EntryFunc = *const fn() callconv(.C) void;
+extern fn js_set_entry(ptr:EntryFunc) void;
+
+extern fn random() f32;
+extern fn gl_init(w:c_int, h:c_int) void;
+
+'''
 
 ZIG_HEADER = '''
 extern fn rect(x:c_int,y:c_int, w:c_int,h:c_int, r:u8,g:u8,b:u8, alpha:f32 ) void;
@@ -677,6 +702,137 @@ def build_wasm(world):
 	#print(zig)
 	build(zig)
 
+def blender_to_zig_webgl(world):
+	header = [ZIG_HEADER_WEBGL]
+	data = []
+	setup = []
+	draw = []
+
+
+	for ob in bpy.data.objects:
+		if ob.hide_get(): continue
+		sname = safename(ob)
+		if ob.type=='MESH':
+			if not ob.data.materials: continue
+			a,b,c = mesh_to_zig(ob)
+			data  += a
+			setup += b
+			draw  += c
+
+	update = [
+		'export fn update() void {',
+		#'	gl_uniform_mat4fv(ploc, proj_matrix);',
+		#'	gl_uniform_mat4fv(vloc, view_matrix);',
+
+	] + draw
+	update.append('}')
+
+
+	main = [
+		'export fn main() void {',
+		'	gl_init(800, 600);',
+		#'	view_matrix[14] = view_matrix[14] -3.0;',
+	] + setup
+
+	main.append('js_set_entry(&update);')
+	main.append('}')
+
+	return header + data + update + main
+
+def mesh_to_zig(ob, mirror=False):
+	if mirror: mirror = 1
+	else: mirror = 0
+	name = safename(ob.data)
+	sname = name.upper()
+	data = []
+	setup = []
+	draw = []
+
+	verts = []
+	for v in ob.data.vertices:
+		verts.append(str(v.co.x))
+		verts.append(str(v.co.y))
+		verts.append(str(v.co.z))
+
+
+	data = [
+		'const VERTS_%s : [%s]f16 = .{%s};' %(sname,len(verts), ','.join(verts)),  ## 16bit float verts
+	]
+
+	indices_by_mat = {}
+	for p in ob.data.polygons:
+		if p.material_index not in indices_by_mat:
+			indices_by_mat[p.material_index] = {'num':0, 'indices':[]}
+
+		if len(p.vertices)==4:
+			x,y,z,w = p.vertices
+			indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+			indices_by_mat[p.material_index]['num'] += 6
+		elif len(p.vertices)==3:
+			x,y,z = p.vertices
+			w = 65000
+			indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+			indices_by_mat[p.material_index]['num'] += 3
+		else:
+			raise RuntimeError('TODO polygon len verts: %s' % len(p.vertices))
+
+	for midx in indices_by_mat:
+		mi = [str(v).replace('(','').replace(')','').replace(' ', '') for v in indices_by_mat[midx]['indices']]
+		data += [
+			'const INDICES_%s_%s : [%s]u16 = .{%s};' %(sname, midx, len(mi), ', '.join(mi)),
+		]
+
+
+	mat = []
+	for vec in ob.matrix_local:
+		mat += [str(v) for v in vec]
+
+
+	data += [
+		'var %s_vbuff : i32 = undefined;' % name,
+		'var %s_mat : [16]f32 = .{%s};' %(name,','.join(mat)),
+	]
+
+
+	return data, setup, draw
+
+
+ZIG_ZAG_INIT = '''
+	js_set_entry(a){
+		this.entryFunction=this.wasm.instance.exports.__indirect_function_table.get(a);
+		const f=(ts)=>{
+			this.dt=(ts-this.prev)/1000;
+			this.prev=ts;
+			this.entryFunction();
+			window.requestAnimationFrame(f)
+		};
+		window.requestAnimationFrame((ts)=>{
+			this.prev=ts;
+			window.requestAnimationFrame(f)
+		});
+	}
+
+	reset(wasm,id,bytes){
+		this.wasm=wasm;
+		this.canvas=document.getElementById(id);
+		this.gl=this.canvas.getContext('webgl');
+		this.gl.getExtension("OES_standard_derivatives");
+		this.bufs=[];
+		this.vs=[];
+		this.fs=[];
+		this.progs=[];
+		this.locs=[];
+		this.wasm.instance.exports.main();
+	}
+
+'''
+
+def build_webgl(world):
+	zig = blender_to_zig_webgl(world)
+	build(zig, jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(ZIG_ZAG_INIT))
+
+
+
 EXAMPLE1 = '''
 self.pos.x += 0.3;
 if (self.pos.x > 800) {
@@ -760,12 +916,20 @@ def test_scene():
 
 if __name__=='__main__':
 	register()
-	if '--monkey' in sys.argv:
-		bpy.ops.object.gpencil_add(type='MONKEY')
-		ob = bpy.context.active_object
-		ob.location.x = 100
-		ob.location.z = -150
-	else:
-		test_scene()
+	if '--2d' in sys.argv:
+		if '--monkey' in sys.argv:
+			bpy.ops.object.gpencil_add(type='MONKEY')
+			ob = bpy.context.active_object
+			ob.location.x = 100
+			ob.location.z = -150
+		else:
+			test_scene()
 
-	build_wasm(bpy.data.worlds[0])
+		build_wasm(bpy.data.worlds[0])
+	else:
+		bpy.data.objects['Cube'].hide_set(True)
+		ob = libgenzag.monkey()
+		ob.rotation_euler.x = -math.pi/2
+		bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+		build_webgl(bpy.data.worlds[0])
+		
