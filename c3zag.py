@@ -2,7 +2,8 @@
 import os, sys, subprocess, base64, webbrowser, zipfile
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path:
-	sys.path.append(_thisdir)
+	## fixes importing of our fork of mesh_auto_mirror.py for Blender 3.6
+	sys.path.insert(0, _thisdir)
 import zigzag
 import libwebzag
 import libgenzag
@@ -29,6 +30,7 @@ if sys.platform == 'win32':
 	c3zip = 'https://github.com/c3lang/c3c/releases/download/v0.6.3/c3-windows.zip'
 	C3 = os.path.join(_thisdir,'c3/c3c.exe')
 	GZIP = os.path.abspath(os.path.join(_thisdir,'gzip.exe'))
+	FIREFOX = '/Program Files/Mozilla Firefox/firefox.exe'
 	iswindows=True
 elif sys.platform == 'darwin':
 	BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
@@ -610,7 +612,12 @@ def build_wasm( world ):
 	]
 	out = 'blender-c3zag-preview.html'
 	open(out,'w').write('\n'.join(o))
-	webbrowser.open(out)
+	if sys.platform=='win32' and os.path.isfile(FIREFOX):
+		## FireFox has Float16Array support
+		subprocess.Popen([FIREFOX, '-url', out])
+	else:
+		## on linux assume that firefox is default browser
+		webbrowser.open(out)
 
 	if sys.platform != 'win32':
 		os.system('ls -l %s' % out)
