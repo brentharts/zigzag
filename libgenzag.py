@@ -4,6 +4,19 @@ try:
 except:
 	bpy=None
 
+if bpy:
+	bpy.types.Material.zigzag_object_type = bpy.props.EnumProperty(
+		name='type',
+		items=[
+			("NONE", "none", "no type"), 
+			("UPPER_LIP", "upper lip", "material is upper lip of mouth"), 
+			("LOWER_LIP", "lower lip", "material is lower lip of mouth"), 
+			("UPPER_EYELID", "upper eyelid", "material is upper lid of eyes"), 
+			("LOWER_EYELID", "lower eyelid", "material is lower lid of eyes"), 
+			("EYES", "pupil", "material is pulil of eyes"), 
+		]
+	)
+
 def monkey(materials=True):
 	bpy.ops.mesh.primitive_cube_add()
 	cu = bpy.context.active_object
@@ -38,7 +51,7 @@ def monkey(materials=True):
 		mat = bpy.data.materials.new(name='pupil')
 		mat.diffuse_color = [uniform(0,0.3), uniform(0,0.3), uniform(0,0.5), 1]
 		ob.data.materials.append(mat)
-		mat.c3_object_type = "EYES"
+		mat.zigzag_object_type = "EYES"
 
 		mat = bpy.data.materials.new(name='eye')
 		mat.diffuse_color = [uniform(0.8,1), uniform(0.8,1), uniform(0.8,1), 1]
@@ -70,7 +83,7 @@ def monkey(materials=True):
 		mat = bpy.data.materials.new(name='lower-lip')
 		mat.diffuse_color = [uniform(0.5,0.9), uniform(0.1,0.3), uniform(0.2,0.5), 1]
 		ob.data.materials.append(mat)
-		mat.c3_object_type = "LOWER_LIP"
+		mat.zigzag_object_type = "LOWER_LIP"
 
 		mat = bpy.data.materials.new(name='eye-lids')
 		mat.diffuse_color = [uniform(0.4,0.8), uniform(0.2,0.5), uniform(0.3,0.6), 1]
@@ -79,12 +92,12 @@ def monkey(materials=True):
 		mat = bpy.data.materials.new(name='eye-lids-upper')
 		mat.diffuse_color = [uniform(0.1,0.3), uniform(0,0.1), uniform(0,0.1), 1]
 		ob.data.materials.append(mat)
-		mat.c3_object_type = "UPPER_EYELID"
+		mat.zigzag_object_type = "UPPER_EYELID"
 
 		mat = bpy.data.materials.new(name='eye-lids-lower')
 		mat.diffuse_color = [uniform(0.2,0.5), uniform(0,0.3), uniform(0,0.3), 1]
 		ob.data.materials.append(mat)
-		mat.c3_object_type = "LOWER_EYELID"
+		mat.zigzag_object_type = "LOWER_EYELID"
 
 
 		## eyes
