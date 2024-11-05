@@ -23,6 +23,9 @@ elif sys.platform == 'darwin':
 	ZIG = os.path.join(_thisdir, 'zig-macos-aarch64-0.13.0/zig')
 else:
 	BLENDER = 'blender'
+	if os.path.isfile(os.path.expanduser('~/Downloads/blender-4.2.1-linux-x64/blender')):
+		BLENDER = os.path.expanduser('~/Downloads/blender-4.2.1-linux-x64/blender')
+
 	zigxz = 'https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz'
 	ZIG = os.path.join(_thisdir, 'zig-linux-x86_64-0.13.0/zig')
 
@@ -432,12 +435,46 @@ def calc_stroke_width(stroke):
 	sw /= len(stroke.points)
 	return sw * stroke.line_width * 0.05
 
+ZIG_SHADER_HEADER = '''
+var vs : i32 = undefined;
+var fs : i32 = undefined;
+var prog : i32 = undefined;
+var ploc : i32 = undefined;
+var vloc : i32 = undefined;
+var mloc : i32 = undefined;
+var posloc : i32 = undefined;
+'''
+
 ZIG_HEADER_WEBGL = '''
 const EntryFunc = *const fn() callconv(.C) void;
 extern fn js_set_entry(ptr:EntryFunc) void;
 
-extern fn random() f32;
 extern fn gl_init(w:c_int, h:c_int) void;
+extern fn gl_new_buffer() c_int;
+extern fn gl_bind_buffer(idx:c_int ) void ;
+extern fn gl_bind_buffer_element(idx:c_int) void;
+extern fn gl_buffer_f16(idx:c_int, sz:c_int, ptr : [*]const f16 ) void;
+extern fn gl_buffer_element(idx:c_int, sz:c_int, ptr : [*]const u16 ) void;
+
+extern fn gl_new_program() c_int;
+extern fn gl_link_program(prog:c_int) void;
+
+extern fn gl_attach_vshader(prog:c_int, s:c_int) void;
+extern fn gl_attach_fshader(prog:c_int, s:c_int) void;
+extern fn gl_new_vshader(c:[*:0] const u8) c_int;
+extern fn gl_new_fshader(c:[*:0] const u8) c_int;
+
+extern fn gl_get_uniform_location(a:c_int, ptr:[*:0] const u8) c_int;
+extern fn gl_get_attr_location(a:c_int, ptr:[*:0] const u8) c_int;
+
+extern fn gl_enable_vertex_attr_array(loc:c_int) void;
+extern fn gl_vertex_attr_pointer(loc:c_int, n:c_int) void;
+
+extern fn gl_use_program(prog:c_int) void;
+
+extern fn gl_draw_tris_tint(len:c_int, r:f32, g:f32, b:f32) void;
+
+
 
 '''
 
@@ -703,7 +740,11 @@ def build_wasm(world):
 	build(zig)
 
 def blender_to_zig_webgl(world):
-	header = [ZIG_HEADER_WEBGL]
+	header = [
+		ZIG_SHADER_HEADER,
+		ZIG_HEADER_WEBGL,
+		gen_shaders(),
+	]
 	data = []
 	setup = []
 	draw = []
@@ -732,12 +773,81 @@ def blender_to_zig_webgl(world):
 		'export fn main() void {',
 		'	gl_init(800, 600);',
 		#'	view_matrix[14] = view_matrix[14] -3.0;',
-	] + setup
-
-	main.append('js_set_entry(&update);')
-	main.append('}')
+		ZIG_SHADER_SETUP,
+	] + ['\t'+ln for ln in setup] + [
+		'	gl_use_program(prog);',
+		'	js_set_entry(&update);',
+		'}',
+	]
 
 	return header + data + update + main
+
+def gen_shaders():
+	o = [
+		'const VERTEX_SHADER =',
+	]
+	for ln in VSHADER.splitlines():
+		ln = ln.strip()
+		if not ln: continue
+		if ln.startswith('//'): continue
+		o.append(r'\\' + ln)  ## yes, multi-line strings in zig start with \\
+	o.append(';')
+	o.append('const FRAGMENT_SHADER =')
+	for ln in FSHADER.splitlines():
+		ln = ln.strip()
+		if not ln: continue
+		if ln.startswith('//'): continue
+		o.append(r'\\' + ln)  ## yes, multi-line strings in zig start with \\
+	o.append(';')
+	return '\n'.join(o)
+
+# VVS vertex view space
+VSHADER = '''
+attribute vec3 vp;
+uniform mat4 P;
+uniform mat4 V;
+uniform mat4 M;
+uniform vec3 T;
+varying vec3 VVS;
+varying vec3 VC;
+void main(void){
+	VVS=(M*V*vec4(vp,1.0)).xyz;
+	gl_Position=P*V*M*vec4(vp,1.);
+	VC=T;
+}
+'''
+
+FSHADER = '''
+#extension GL_OES_standard_derivatives:enable
+precision mediump float;
+varying vec3 VVS;
+varying vec3 VC;
+void main(void){
+	vec3 U=dFdx(VVS);
+	vec3 V=dFdy(VVS);
+	vec3 N=normalize(cross(U,V));
+	vec3 f=vec3(1.1,1.1,1.1)*N.z;
+	gl_FragColor=vec4( (VC+(N*0.2))*f ,1.0);
+}
+'''
+
+
+ZIG_SHADER_SETUP = '''
+	vs = gl_new_vshader(VERTEX_SHADER);
+	fs = gl_new_fshader(FRAGMENT_SHADER);
+
+	prog = gl_new_program();
+	gl_attach_vshader(prog, vs);
+	gl_attach_fshader(prog, fs);
+	gl_link_program( prog );
+
+	ploc = gl_get_uniform_location(prog, "P");  // projection Pmat
+	vloc = gl_get_uniform_location(prog, "V");  // view matrix
+	mloc = gl_get_uniform_location(prog, "M");  // model matrix
+
+	posloc = gl_get_attr_location(prog, "vp");  // vertex position
+
+'''
 
 def mesh_to_zig(ob, mirror=False):
 	if mirror: mirror = 1
@@ -779,7 +889,8 @@ def mesh_to_zig(ob, mirror=False):
 	for midx in indices_by_mat:
 		mi = [str(v).replace('(','').replace(')','').replace(' ', '') for v in indices_by_mat[midx]['indices']]
 		data += [
-			'const INDICES_%s_%s : [%s]u16 = .{%s};' %(sname, midx, len(mi), ', '.join(mi)),
+			'const INDICES_%s_%s : [%s]u16 = .{%s};' %(sname, midx, len(mi)*4, ', '.join(mi)),
+			'var %s_%s_ibuff : i32 = undefined;' % (name,midx),
 		]
 
 
@@ -792,6 +903,33 @@ def mesh_to_zig(ob, mirror=False):
 		'var %s_vbuff : i32 = undefined;' % name,
 		'var %s_mat : [16]f32 = .{%s};' %(name,','.join(mat)),
 	]
+
+	setup = [
+		'%s_vbuff = gl_new_buffer();' % name,
+		'gl_bind_buffer(%s_vbuff);' % name,
+		'gl_buffer_f16(%s, VERTS_%s.len, &VERTS_%s);' %(mirror, sname,sname),
+
+
+		'gl_vertex_attr_pointer(posloc, 3);',
+		'gl_enable_vertex_attr_array(posloc);',
+	]
+
+	for midx in indices_by_mat:
+		setup += [
+			'%s_%s_ibuff = gl_new_buffer();' % (name,midx),
+			'gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx),
+			'gl_buffer_element(%s, INDICES_%s_%s.len, &INDICES_%s_%s);' %(mirror, sname,midx, sname,midx),
+		]
+
+	for midx in indices_by_mat:
+		num = indices_by_mat[midx]['num']
+		draw.append('gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx))
+		mat = ob.data.materials[midx]
+		r,g,b,a = mat.diffuse_color
+		if mirror:
+			draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num*2,r,g,b))
+		else:
+			draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num,r,g,b))
 
 
 	return data, setup, draw
@@ -822,6 +960,7 @@ ZIG_ZAG_INIT = '''
 		this.fs=[];
 		this.progs=[];
 		this.locs=[];
+		this.mods=[];
 		this.wasm.instance.exports.main();
 	}
 
