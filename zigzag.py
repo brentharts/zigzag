@@ -6,11 +6,14 @@ import libwebzag
 import libgenzag
 
 try:
+	import matplotlib
 	import matplotlib.pyplot as plt
 except:
 	plt = None
 
 if '-gui' in sys.argv:
+	if plt:
+		matplotlib.use('QtAgg')
 	if sys.platform=='win32':
 		try:
 			import PySide6
@@ -57,6 +60,22 @@ if '-gui' in sys.argv:
 					'wasm' : len(open(wasm,'rb').read()),
 					'html' : len( open('%s_%s.html'%(lang,name),'rb').read() ),
 				}
+
+			print(plot)
+			names = []
+			values = []
+			colors = []
+			cmap = {'zig':'cyan', 'rust':'pink', 'c3':'orange'}
+			for lang in plot:
+				for ftype in plot[lang]:
+					names.append('%s %s' % (lang, ftype))
+					values.append(plot[lang][ftype])
+					colors.append(cmap[lang])
+
+			fig, ax = plt.subplots()
+			ax.set_ylabel('bytes')
+			ax.bar(names, values, color=colors)
+			plt.show()
 
 
 		def __init__(self):
