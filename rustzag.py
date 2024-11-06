@@ -258,7 +258,7 @@ extern "C"{
 	fn js_sin(a:f32) ->f32;
 	fn js_cos(a:f32) ->f32;
 
-	fn js_set_entry(ptr: unsafe extern "C" fn());
+	//fn js_set_entry(ptr: unsafe extern "C" fn());
 
 
 }
@@ -325,6 +325,59 @@ static mut proj_matrix : [f32;16] = [1.3737387097273113,0.0,0.0,0.0,0.0, 1.83165
 static mut view_matrix : [f32;16] = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
 '''
 
+#pub fn rotateY(mut m:[f32;16], angle:f32) {
+#pub fn rotateY(m:&[f32;16], angle:f32) {
+
+## help: consider using `wrapping_add` or `add` for indexing into raw pointer
+#pub fn rotateY(m:*const f32, angle:f32) {
+
+RUST_HELPER_FUNCS = '''
+pub fn rotateY(m:*const f32, angle:f32) {
+	unsafe{
+		let c:f32 = js_cos(angle);
+		let s:f32 = js_sin(angle);	
+
+		let mv0:f32 = m[0];
+		let mv4:f32 = m[4];
+		let mv8:f32 = m[8];
+
+		m[0] = c*m[0]+s*m[2];
+		m[4] = c*m[4]+s*m[6];
+		m[8] = c*m[8]+s*m[10];
+
+		m[2] = c*m[2]-s*mv0;
+		m[6] = c*m[6]-s*mv4;
+		m[10] = c*m[10]-s*mv8;
+
+	}
+}
+
+'''
+
+
+RUST_HELPER_FUNCS = '''
+pub fn rotateY(m:*mut f32, angle:f32) {
+	unsafe{
+		let c:f32 = js_cos(angle);
+		let s:f32 = js_sin(angle);	
+
+		let mv0:f32 = *m.wrapping_add(0);
+		let mv4:f32 = *m.wrapping_add(4);
+		let mv8:f32 = *m.wrapping_add(8);
+
+		*m.wrapping_add(0) = c * (*m.wrapping_add(0)) + s * (*m.wrapping_add(2));
+		*m.wrapping_add(4) = c * (*m.wrapping_add(4)) + s * (*m.wrapping_add(6));
+		*m.wrapping_add(8) = c * (*m.wrapping_add(8)) + s * (*m.wrapping_add(10));
+
+		*m.wrapping_add(2)  = c * (*m.wrapping_add(2)) - s * mv0;
+		*m.wrapping_add(6)  = c * (*m.wrapping_add(6)) - s * mv4;
+		*m.wrapping_add(10) = c * (*m.wrapping_add(10)) - s * mv8;
+
+	}
+}
+
+'''
+
 
 def blender_to_rust(world):
 	header = [
@@ -333,6 +386,7 @@ def blender_to_rust(world):
 		RUST_SHADER_VARS,
 		gen_shaders(),
 		DEBUG_CAMERA,
+		RUST_HELPER_FUNCS,
 	]
 	data = []
 	setup = []
@@ -458,6 +512,71 @@ def mesh_to_rust(ob, mirror=False):
 		'gl_bind_buffer(%s_vbuff);' % name,
 		'gl_uniform_mat4fv(mloc, %s_mat.as_ptr());' % name,  ## update object matrix uniform
 	]
+
+
+	needs_upload = False
+	lower_eyelid = None
+	for midx in indices_by_mat:
+		mat = ob.data.materials[midx]
+		if mat.zigzag_object_type == "LOWER_EYELID":
+			lower_eyelid=midx
+			break
+
+	for midx in indices_by_mat:
+		mat = ob.data.materials[midx]
+		if mat.zigzag_object_type != "NONE":
+			draw += [
+				'let mut needs_upload=false;'
+			]
+
+			data += [
+				'static mut eyes_x:f32=0.0;'
+				'static mut eyes_y:f32=0.0;'
+
+			]
+			needs_upload = True
+			break
+
+
+	for midx in indices_by_mat:
+		mat = ob.data.materials[midx]
+		if mat.zigzag_object_type != "NONE":
+			if mat.zigzag_object_type=="LOWER_LIP":
+				draw += [
+					'if(js_rand() < 0.06){',
+					'	gl_trans(%s_%s_ibuff,0.0, (js_rand()-0.25)*0.1 ,0.0);' % (name,midx),
+					'	needs_upload=true;',
+					'}',
+				]
+			elif mat.zigzag_object_type=="EYES":
+				draw += [
+					'if(js_rand() < 0.03){',
+					'	eyes_x=(js_rand()-0.5)*0.05;',
+					'	eyes_y=(js_rand()-0.5)*0.01;',
+					'	rotateY(%s_mat.as_mut_ptr(), eyes_x*2.0);' %name,
+					'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0.0);' % (name,midx),
+					'	needs_upload=true;',
+				]
+				if lower_eyelid is not None:
+					draw += [
+					'	gl_trans(%s_%s_ibuff, eyes_x*0.25,(eyes_y*0.4)+( (js_rand()-0.35)*0.07),0.025);' % (name,lower_eyelid),
+					]
+
+				draw.append('}')
+
+			elif mat.zigzag_object_type=="UPPER_EYELID":
+				draw += [
+					'if(js_rand() < 0.06 || needs_upload){',
+					'	gl_trans(%s_%s_ibuff, eyes_x*0.2, ((js_rand()-0.7)*0.07)+(eyes_y*0.2) ,0.05);' % (name,midx),
+					'	needs_upload=true;',
+					'}',
+				]
+
+
+		if needs_upload:
+			draw.append(
+				'if(needs_upload) { gl_trans_upload(%s_vbuff); }' % name
+			)
 
 
 	for midx in indices_by_mat:
