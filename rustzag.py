@@ -3,7 +3,7 @@ import os, sys, subprocess, base64, webbrowser
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 import zigzag, libwebzag, libgenzag
-from zigzag import GZIP, BLENDER, VSHADER, FSHADER, safename
+from zigzag import GZIP, BLENDER, VSHADER, FSHADER, safename, is_mesh_sym
 
 #sudo apt-get install wabt
 def wasm_strip(wasm):
@@ -397,7 +397,18 @@ def blender_to_rust(world):
 		sname = safename(ob)
 		if ob.type=='MESH':
 			if not ob.data.materials: continue
-			a,b,c = mesh_to_rust(ob)
+
+			if '--disable-sym' in sys.argv:
+				is_symmetric = False
+			else:
+				is_symmetric = is_mesh_sym(ob)
+				if is_symmetric:
+					bpy.ops.object.mode_set(mode="EDIT")
+					bpy.ops.object.automirror()
+					bpy.ops.object.mode_set(mode="OBJECT")
+					ob.modifiers[0].use_mirror_merge=False
+
+			a,b,c = mesh_to_rust(ob, mirror=is_symmetric)
 			data  += a
 			setup += b
 			draw  += c
