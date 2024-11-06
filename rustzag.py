@@ -42,6 +42,7 @@ def build(rs, jsapi=None):
 		open(tmp, 'w').write(rs)
 	cmd = [
 		'rustc', '--target', 'wasm32-unknown-unknown',
+		#'--edition', '2021',  ## c-string literals require Rust 2021 or later, but this makes a CStr
 		'--crate-type', 'cdylib',
 		#rustc-LLVM ERROR: Target does not support the tiny CodeModel
 		#'-Ccode-model=tiny',
@@ -261,23 +262,30 @@ RUST_SHADER_SETUP = r'''
 
 '''
 
+## https://doc.rust-lang.org/reference/tokens.html#c-string-literals
 def gen_shaders():
+	assert '"' not in VSHADER
+	assert '"' not in FSHADER
+
 	o = [
-		'const VERTEX_SHADER:&str =r###"',
+		#'const VERTEX_SHADER:&str =r###"',
+		#'const VERTEX_SHADER:&str = c"',
+		'const VERTEX_SHADER:&str = "',
 	]
 	for ln in VSHADER.splitlines():
 		ln = ln.strip()
 		if not ln: continue
 		if ln.startswith('//'): continue
 		o.append(ln)
-	o.append(r'\0"###;')
-	o.append('const FRAGMENT_SHADER:&str = r###"')
+	#o.append(r'\0"###;')
+	o.append('\0x00";')
+	o.append('const FRAGMENT_SHADER:&str = "')
 	for ln in FSHADER.splitlines():
 		ln = ln.strip()
 		if not ln: continue
 		if ln.startswith('//'): continue
 		o.append(ln)
-	o.append(r'\0"###;')
+	o.append('\0x00";')
 	return '\n'.join(o)
 
 def blender_to_rust(world):
@@ -348,6 +356,63 @@ def mesh_to_rust(ob, mirror=False):
 	data = [
 		'const VERTS_%s : [f16;%s] = [%s];' %(sname,len(verts), ','.join(verts)),  ## 16bit float verts
 	]
+
+
+	indices_by_mat = {}
+	for p in ob.data.polygons:
+		if p.material_index not in indices_by_mat:
+			indices_by_mat[p.material_index] = {'num':0, 'indices':[]}
+
+		if len(p.vertices)==4:
+			x,y,z,w = p.vertices
+			indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+			indices_by_mat[p.material_index]['num'] += 6
+		elif len(p.vertices)==3:
+			x,y,z = p.vertices
+			w = 65000
+			indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+			indices_by_mat[p.material_index]['num'] += 3
+		else:
+			raise RuntimeError('TODO polygon len verts: %s' % len(p.vertices))
+
+	for midx in indices_by_mat:
+		mi = [str(v).replace('(','').replace(')','').replace(' ', '') for v in indices_by_mat[midx]['indices']]
+		data += [
+			'const INDICES_%s_%s : [u16;%s] = [%s];' %(sname, midx, len(mi)*4, ', '.join(mi)),
+			'static mut %s_%s_ibuff : i32 = 0;' % (name,midx),
+		]
+
+	mat = []
+	for vec in ob.matrix_local:
+		mat += [str(v) for v in vec]
+
+
+	data += [
+		'static mut %s_vbuff : i32 = 0;' % name,
+		'static mut %s_mat : [f32;16] = [%s];' %(name,','.join(mat)),
+	]
+
+
+	setup = [
+		'%s_vbuff = gl_new_buffer();' % name,
+		'gl_bind_buffer(%s_vbuff);' % name,
+		# note: 'core::convert::TryInto' is included in the prelude starting in Edition 2021
+		#'gl_buffer_f16(%s, VERTS_%s.len().try_into().unwrap(), VERTS_%s.as_ptr());' %(mirror, sname,sname),
+		'gl_buffer_f16(%s, VERTS_%s.len() as i32, VERTS_%s.as_ptr());' %(mirror, sname,sname),
+
+
+		'gl_vertex_attr_pointer(posloc, 3);',
+		'gl_enable_vertex_attr_array(posloc);',
+	]
+
+	for midx in indices_by_mat:
+		setup += [
+			'%s_%s_ibuff = gl_new_buffer();' % (name,midx),
+			'gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx),
+			'gl_buffer_element(%s, INDICES_%s_%s.len() as i32, INDICES_%s_%s.as_ptr());' %(mirror, sname,midx, sname,midx),
+		]
+
+
 
 	return data, setup, draw
 
