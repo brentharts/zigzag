@@ -7,6 +7,7 @@ if _thisdir not in sys.path:
 import zigzag
 import libwebzag
 import libgenzag
+from zigzag import is_mesh_sym
 
 HELP='''
 run: python c3zag.py [.blend]
@@ -778,34 +779,7 @@ void main(void){
 #	vec3 f=vec3(1,1,1)*N.z;
 
 
-def is_mesh_sym(ob, strict=False):
-	left  = []
-	right = []
-	mid   = []
-	for v in ob.data.vertices:
-		x,y,z = v.co
-		if not strict:
-			x = round(x,4)
-			y = round(y,4)
-			z = round(z,4)
-		if x==0:
-			mid.append((x,y,z))
-		elif x < 0:
-			left.append( (abs(x),y,z) )
-		else:
-			right.append((x,y,z))
 
-	left.sort()
-	right.sort()
-	mid.sort()
-	print('left:',len(left))
-	print('right:',len(right))
-	print('mid:',len(mid))
-
-	if len(left)==len(right) and len(mid):
-		return (tuple(left)==tuple(right))
-
-	return False
 
 def blender_to_c3(world, use_vertex_colors=False):
 	if use_vertex_colors:
