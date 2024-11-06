@@ -56,13 +56,12 @@ RUST_INIT = '''
 
 '''
 
-def build(rs, jsapi=None):
+def build(rs, name='rust_test', jsapi=None, preview=True):
 	if not jsapi:
 		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(
 			RUST_INIT + JS_ALERT
 		)
 
-	name = 'test_rust'
 	tmp = '/tmp/%s.rs' % name
 	wasm = '/tmp/%s.wasm' % name
 	if type(rs) is list:
@@ -104,7 +103,6 @@ def build(rs, jsapi=None):
 	js = open(jtmp+'.gz','rb').read()
 	jsb = base64.b64encode(js).decode('utf-8')
 
-
 	o = [
 		'<html>',
 		'<body>',
@@ -116,9 +114,10 @@ def build(rs, jsapi=None):
 		'</script>',
 	]
 
-	out = 'rustzag-preview.html'
+	out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
-	webbrowser.open(out)
+	if preview:
+		webbrowser.open(out)
 
 
 NO_STD='''
@@ -604,11 +603,20 @@ def mesh_to_rust(ob, mirror=False):
 	return data, setup, draw
 
 
-def build_webgl(world):
+def build_webgl(world, name='rust_test', preview=True):
 	rs = blender_to_rust(world)
-	build(rs)
+	build(rs, name=name, preview=preview)
 
 if __name__=='__main__':
+	for arg in sys.argv:
+		if arg.startswith('--test='):
+			import libtestzag
+			tname = arg.split('=')[-1]
+			getattr(libtestzag, tname)()
+			build_webgl(bpy.data.worlds[0], name='rust_'+tname, preview=False)
+			sys.exit()
+
+
 	bpy.data.objects['Cube'].hide_set(True)
 	ob = libgenzag.monkey()
 	ob.rotation_euler.x = -math.pi/2
