@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-import os, sys, subprocess, base64
+import os, sys, subprocess, base64, webbrowser
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 import zigzag, libwebzag
 from zigzag import GZIP
-
 
 #sudo apt-get install wabt
 def wasm_strip(wasm):
@@ -21,10 +20,18 @@ def wasm_opt(wasm):
 	subprocess.check_call(cmd)
 	return o
 
+JS_ALERT = '''
+	js_alert(ptr, len){
+		const b=new Uint8Array(this.wasm.instance.exports.memory.buffer,ptr,len);
+		window.alert(new TextDecoder().decode(b))
+	}
+'''
 
 def build(rs, jsapi=None):
 	if not jsapi:
-		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(zigzag.ZIG_ZAG_INIT)
+		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(
+			zigzag.ZIG_ZAG_INIT + JS_ALERT
+		)
 
 	name = 'test_rust'
 	tmp = '/tmp/%s.rs' % name
@@ -68,6 +75,21 @@ def build(rs, jsapi=None):
 	jsb = base64.b64encode(js).decode('utf-8')
 
 
+	o = [
+		'<html>',
+		'<body>',
+		'<canvas id="$"></canvas>',
+		'<script>', 
+		'var $0="%s"' % jsb,
+		'var $1="%s"' % b,
+		libwebzag.JS_DECOMP,
+		'</script>',
+	]
+
+	out = 'rustzag-preview.html'
+	open(out,'w').write('\n'.join(o))
+	webbrowser.open(out)
+
 
 NO_STD='''
 #![no_std]
@@ -91,48 +113,16 @@ pub fn main() {
 		js_alert("hello world".as_ptr(), 11);
 	}
 }
-
-'''
-
-TEST1 = '''
-
-use std::ffi::CString;
-use std::os::raw::c_char;
-
-extern "C"{
-	//fn alert(s:&str);
-	fn alert(s:*const u8);
-}
-
-#[no_mangle]
-pub fn add_one(x: i32) -> i32 {
-	x + 1
-}
-
-#[no_mangle]
-pub fn main() {
-	unsafe{
-		//alert("hello world".as_ptr());
-		alert(
-			CString::new("hello world").unwrap().as_ptr()  as *const u8
-		);
-	}
-}
 '''
 
 ## https://cliffle.com/blog/bare-metal-wasm/
-
 ## https://rustwasm.github.io/book/reference/code-size.html
 # "Rust's default allocator for WebAssembly is a port of dlmalloc to Rust. It weighs in somewhere around ten kilobytes."
-
 ## https://stackoverflow.com/questions/49203561/how-do-i-convert-a-str-to-a-const-u8
 ## https://doc.rust-lang.org/std/ffi/struct.CString.html
 ## https://dzfrias.dev/blog/rust-wasm-minimal-setup/
 ## https://blog.jfo.click/calling-a-c-function-from-rust/
 ## https://users.rust-lang.org/t/minimal-webassembly-without-std/18070
 if __name__=='__main__':
-	if '--no-std' in sys.argv:
-		build(NO_STD)
-	else:
-		build(TEST1)
+	build(NO_STD)
 	os.system('ls -lh /tmp/*.wasm')
