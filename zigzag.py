@@ -6,17 +6,19 @@ import libwebzag
 import libgenzag
 
 if '-gui' in sys.argv:
-	try:
-		import PySide6
-	except:
-		if sys.platform=='win32':
+	if sys.platform=='win32':
+		try:
+			import PySide6
+		except:
 			cmd=['python', '-m', 'pip', 'install', 
 			#'PySide6'
 			'PySide6-Essentials'
 			]
 			subprocess.check_call(cmd)
 
-	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
+		from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
+	else:
+		from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
 
 	class Window(QWidget):
 		def on_click(self):
@@ -56,7 +58,9 @@ if '-gui' in sys.argv:
 			if sys.platform=='win32':
 				pfiles = 'C:\\Program Files\\Blender Foundation'
 				if os.path.isdir(pfiles):
-					for name in os.listdir(pfiles):
+					files = os.listdir(pfiles)
+					files.sort()
+					for name in files:
 						if 'Blender' in name:
 							bpath = os.path.join(pfiles,name)
 							print(os.listdir(bpath))
@@ -66,6 +70,22 @@ if '-gui' in sys.argv:
 								vbox.addWidget(QLabel(b))
 				if not self.blenders:
 					vbox.addWidget(QLabel('ERROR: blender not installed'))
+			else:
+				pfiles = os.path.expanduser('~/Downloads')
+				if os.path.isdir(pfiles):
+					files = os.listdir(pfiles)
+					files.sort()
+					for name in files:
+						if 'blender' in name:
+							bpath = os.path.join(pfiles,name)
+							if os.path.isdir(bpath):
+								if 'blender' in os.listdir(bpath):
+									b=os.path.join(bpath,'blender')
+									self.blenders.append(b)
+									vbox.addWidget(QLabel(b))
+							else:
+								#vbox.addWidget(QLabel(bpath))
+								pass
 
 
 			vbox.addStretch(1)
@@ -409,6 +429,35 @@ if bpy:
 	from random import random, uniform, choice
 
 MAX_SCRIPTS_PER_OBJECT = 8
+
+def is_mesh_sym(ob, strict=False):
+	left  = []
+	right = []
+	mid   = []
+	for v in ob.data.vertices:
+		x,y,z = v.co
+		if not strict:
+			x = round(x,4)
+			y = round(y,4)
+			z = round(z,4)
+		if x==0:
+			mid.append((x,y,z))
+		elif x < 0:
+			left.append( (abs(x),y,z) )
+		else:
+			right.append((x,y,z))
+
+	left.sort()
+	right.sort()
+	mid.sort()
+	print('left:',len(left))
+	print('right:',len(right))
+	print('mid:',len(mid))
+
+	if len(left)==len(right) and len(mid):
+		return (tuple(left)==tuple(right))
+
+	return False
 
 def register():
 	for i in range(MAX_SCRIPTS_PER_OBJECT):
