@@ -5,6 +5,11 @@ if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 import libwebzag
 import libgenzag
 
+try:
+	import matplotlib.pyplot as plt
+except:
+	plt = None
+
 if '-gui' in sys.argv:
 	if sys.platform=='win32':
 		try:
@@ -38,23 +43,40 @@ if '-gui' in sys.argv:
 			print(cmd)
 			subprocess.check_call(cmd)
 
+		def run_test(self, name):
+			plot = {}
+			for lang in 'zig c3 rust'.split():
+				engine = lang+'zag.py'
+				assert os.path.isfile(engine)
+				cmd = [self.blenders[-1], '--background', '--python', engine, '--', '--test='+name]
+				print(cmd)
+				subprocess.check_call(cmd)
+
+				wasm = '/tmp/%s_%s.wasm' % (lang, name)
+				plot[lang] = {
+					'wasm' : len(open(wasm,'rb').read()),
+					'html' : len( open('%s_%s.html'%(lang,name),'rb').read() ),
+				}
+
+
 		def __init__(self):
 			super().__init__()
 			self.blenders = []
 			self.resize(250, 150)
 			self.setWindowTitle('ZigZag')
-
-			# Create two buttons
-			button_ok = QPushButton("OK")
-			button_ok.clicked.connect(self.on_click)
-			button_cancel = QPushButton("Cancel")
-
-			hbox = QHBoxLayout()
-			hbox.addStretch(1)
-			hbox.addWidget(button_ok)
-			hbox.addWidget(button_cancel)
-
 			vbox = QVBoxLayout()
+
+			if plt:
+				hbox = QHBoxLayout()
+				hbox.addWidget(QLabel('Plot WASM size tests:'))
+				hbox.addStretch(1)
+				vbox.addLayout(hbox)
+				btn = QPushButton("test1")
+				btn.clicked.connect(lambda : self.run_test("test1"))
+				hbox.addWidget(btn)
+
+			vbox.addWidget(QLabel('Blender Versions:'))
+
 			if sys.platform=='win32':
 				pfiles = 'C:\\Program Files\\Blender Foundation'
 				if os.path.isdir(pfiles):
@@ -86,9 +108,25 @@ if '-gui' in sys.argv:
 							else:
 								#vbox.addWidget(QLabel(bpath))
 								pass
+				if not self.blenders:
+					for bpath in '/usr/bin/blender /usr/local/bin/blender /Applications/Blender.app/Contents/MacOS/Blender'.split():
+						if os.path.isfile(bpath):
+							vbox.addWidget(QLabel(bpath))
+							self.blenders.append(bpath)
+
 
 
 			vbox.addStretch(1)
+
+			button_ok = QPushButton("OK")
+			button_ok.clicked.connect(self.on_click)
+			button_cancel = QPushButton("Cancel")
+
+			hbox = QHBoxLayout()
+			hbox.addStretch(1)
+			hbox.addWidget(button_ok)
+			hbox.addWidget(button_cancel)
+
 			vbox.addLayout(hbox)
 
 			# Add vertical layout to window
@@ -302,8 +340,7 @@ def wasm_opt(wasm):
 	return o
 
 
-def build(zig, memsize=4, jsapi=JS_API):
-	name = 'test-zig'
+def build(zig, name='zigzag-preview', memsize=4, jsapi=JS_API, preview=True):
 	tmp = '/tmp/%s.zig' % name
 	if type(zig) is list:
 		open(tmp, 'w').write('\n'.join(zig))
@@ -354,14 +391,15 @@ def build(zig, memsize=4, jsapi=JS_API):
 		'</script>',
 	]
 
-	out = 'zigzag-preview.html'
+	out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
-	if sys.platform=='win32' and os.path.isfile(FIREFOX):
-		## FireFox has Float16Array support
-		subprocess.Popen([FIREFOX, '-url', out])
-	else:
-		## on linux assume that firefox is default browser
-		webbrowser.open(out)
+	if preview:
+		if sys.platform=='win32' and os.path.isfile(FIREFOX):
+			## FireFox has Float16Array support
+			subprocess.Popen([FIREFOX, '-url', out])
+		else:
+			## on linux assume that firefox is default browser
+			webbrowser.open(out)
 
 	if sys.platform!='win32':
 		cmd = ['zip', '-9', 'zigzag-preview.zip', 'zigzag-preview.html']
@@ -1225,9 +1263,14 @@ ZIG_ZAG_INIT = '''
 
 '''
 
-def build_webgl(world):
+def build_webgl(world, name='zig', preview=True):
 	zig = blender_to_zig_webgl(world)
-	build(zig, jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(ZIG_ZAG_INIT))
+	build(
+		zig,
+		name=name, 
+		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(ZIG_ZAG_INIT), 
+		preview=preview
+	)
 
 
 
@@ -1314,6 +1357,14 @@ def test_scene():
 
 if __name__=='__main__':
 	register()
+
+	for arg in sys.argv:
+		if arg.startswith('--test='):
+			import libtestzag
+			tname = arg.split('=')[-1]
+			getattr(libtestzag, tname)()
+			build_webgl(bpy.data.worlds[0], name='zig_'+tname, preview=False)
+			sys.exit()
 	if '--2d' in sys.argv:
 		if '--monkey' in sys.argv:
 			bpy.ops.object.gpencil_add(type='MONKEY')
