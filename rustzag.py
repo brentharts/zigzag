@@ -27,10 +27,39 @@ JS_ALERT = '''
 	}
 '''
 
+
+RUST_INIT = '''
+	reset(wasm,id,bytes){
+		this.wasm=wasm;
+		this.canvas=document.getElementById(id);
+		this.gl=this.canvas.getContext('webgl');
+		this.gl.getExtension("OES_standard_derivatives");
+		this.bufs=[];
+		this.vs=[];
+		this.fs=[];
+		this.progs=[];
+		this.locs=[];
+		this.mods=[];
+		this.entryFunction=this.wasm.instance.exports.update;
+		this.wasm.instance.exports.main();
+		const f=(ts)=>{
+			this.dt=(ts-this.prev)/1000;
+			this.prev=ts;
+			this.entryFunction();
+			window.requestAnimationFrame(f)
+		};
+		window.requestAnimationFrame((ts)=>{
+			this.prev=ts;
+			window.requestAnimationFrame(f)
+		});
+	}
+
+'''
+
 def build(rs, jsapi=None):
 	if not jsapi:
 		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(
-			zigzag.ZIG_ZAG_INIT + JS_ALERT
+			RUST_INIT + JS_ALERT
 		)
 
 	name = 'test_rust'
@@ -220,7 +249,7 @@ extern "C"{
 	fn gl_use_program(prog:i32);
 
 	fn gl_draw_tris_tint(len:i32, r:f32, g:f32, b:f32);
-	fn gl_uniform_mat4fv(loc:i32, mat:*mut f32);
+	fn gl_uniform_mat4fv(loc:i32, mat:*const f32);
 
 	fn gl_trans(matid:i32, x:f32, y:f32, z:f32);
 	fn gl_trans_upload(vid:i32);
@@ -228,6 +257,9 @@ extern "C"{
 	fn js_rand() ->f32;
 	fn js_sin(a:f32) ->f32;
 	fn js_cos(a:f32) ->f32;
+
+	fn js_set_entry(ptr: unsafe extern "C" fn());
+
 
 }
 
@@ -288,12 +320,19 @@ def gen_shaders():
 	o.append('\0x00";')
 	return '\n'.join(o)
 
+DEBUG_CAMERA = '''
+static mut proj_matrix : [f32;16] = [1.3737387097273113,0.0,0.0,0.0,0.0, 1.8316516129697482,0.0,0.0,0.0,0.0, -1.02020202020202,-1.0,0.0,0.0,-2.0202020202020203,0.0];
+static mut view_matrix : [f32;16] = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
+'''
+
+
 def blender_to_rust(world):
 	header = [
 		RUST_HEADER, 
 		RUST_EXTERN,
 		RUST_SHADER_VARS,
 		gen_shaders(),
+		DEBUG_CAMERA,
 	]
 	data = []
 	setup = []
@@ -312,7 +351,11 @@ def blender_to_rust(world):
 	update = [
 		'#[no_mangle]',
 		'pub fn update() {',
+		#'extern "C" fn update(){',
 		'	unsafe{',
+		'	gl_uniform_mat4fv(ploc, proj_matrix.as_ptr());',
+		'	gl_uniform_mat4fv(vloc, view_matrix.as_ptr());',
+
 	] + draw + [
 		'	}',
 		'}',
@@ -321,16 +364,15 @@ def blender_to_rust(world):
 	main = [
 		'#[no_mangle]',
 		'pub fn main() {',
-
 		'	unsafe{',
-
 		'	gl_init(800, 600);',
-		#'	prog = gl_new_program();',
+		'	view_matrix[14] = view_matrix[14] - 3.0;',
+
 		RUST_SHADER_SETUP,
 
 	] + ['\t'+ln for ln in setup] + [
 		'	gl_use_program(prog);',
-		#'	js_set_entry(&update);',
+		#'	js_set_entry(update);',  # expected "C" fn, found "Rust" fn
 		'	}',
 		'}'
 	]
@@ -412,6 +454,21 @@ def mesh_to_rust(ob, mirror=False):
 			'gl_buffer_element(%s, INDICES_%s_%s.len() as i32, INDICES_%s_%s.as_ptr());' %(mirror, sname,midx, sname,midx),
 		]
 
+	draw += [
+		'gl_bind_buffer(%s_vbuff);' % name,
+		'gl_uniform_mat4fv(mloc, %s_mat.as_ptr());' % name,  ## update object matrix uniform
+	]
+
+
+	for midx in indices_by_mat:
+		num = indices_by_mat[midx]['num']
+		draw.append('gl_bind_buffer_element(%s_%s_ibuff);' % (name,midx))
+		mat = ob.data.materials[midx]
+		r,g,b,a = mat.diffuse_color
+		if mirror:
+			draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num*2,r,g,b))
+		else:
+			draw.append('gl_draw_tris_tint( %s, %s,%s,%s );' % (num,r,g,b))
 
 
 	return data, setup, draw
