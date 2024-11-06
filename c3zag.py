@@ -404,13 +404,6 @@ if __name__=='__main__':
 
 ## in blender ##
 assert bpy
-
-## gone in default blender 4.2 :(
-#bpy.ops.preferences.addon_enable(module="mesh_auto_mirror")
-import mesh_auto_mirror
-mesh_auto_mirror.register()
-
-
 import math, mathutils
 from random import random, uniform, choice
 
@@ -572,13 +565,13 @@ def c3_wasm_strip(wasm):
 		open(wasm,'wb').write(c)
 
 SERVER_PROC = None
-def build_wasm( world ):
+def build_wasm( world, name='test-c3', preview=True ):
 	global SERVER_PROC
 	if SERVER_PROC: SERVER_PROC.kill()
 	o = blender_to_c3(world)
 	o = '\n'.join(o)
 	if '--debug' in sys.argv: print(o)
-	wasm = c3_compile(WASM_MINI_GL + o)
+	wasm = c3_compile(WASM_MINI_GL + o, name=name)
 	c3_wasm_strip(wasm)
 	if sys.platform != 'win32':
 		wasm = wasm_opt(wasm)
@@ -611,14 +604,16 @@ def build_wasm( world ):
 		libwebzag.JS_DECOMP,
 		'</script>',
 	]
-	out = 'blender-c3zag-preview.html'
+	out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
-	if sys.platform=='win32' and os.path.isfile(FIREFOX):
-		## FireFox has Float16Array support
-		subprocess.Popen([FIREFOX, '-url', out])
-	else:
-		## on linux assume that firefox is default browser
-		webbrowser.open(out)
+
+	if preview:
+		if sys.platform=='win32' and os.path.isfile(FIREFOX):
+			## FireFox has Float16Array support
+			subprocess.Popen([FIREFOX, '-url', out])
+		else:
+			## on linux assume that firefox is default browser
+			webbrowser.open(out)
 
 	if sys.platform != 'win32':
 		os.system('ls -l %s' % out)
@@ -1447,6 +1442,16 @@ def test_scene( test_materials=True, test_twist=False, spin_script=False ):
 		mod.deform_axis="Y"
 
 if __name__=='__main__':
+	for arg in sys.argv:
+		if arg.startswith('--test='):
+			import libtestzag
+			tname = arg.split('=')[-1]
+			getattr(libtestzag, tname)()
+			build_wasm(bpy.data.worlds[0], name='c3_'+tname, preview=False)
+			sys.exit()
+
+
+
 	test_scene()
 	if '--no-wasm-test' in sys.argv: pass
 	else: build_wasm(bpy.data.worlds[0])
