@@ -427,6 +427,9 @@ if __name__=='__main__':
 if bpy:
 	import math, mathutils
 	from random import random, uniform, choice
+	import mesh_auto_mirror
+	mesh_auto_mirror.register()
+
 
 MAX_SCRIPTS_PER_OBJECT = 8
 
@@ -921,7 +924,18 @@ def blender_to_zig_webgl(world):
 		sname = safename(ob)
 		if ob.type=='MESH':
 			if not ob.data.materials: continue
-			a,b,c = mesh_to_zig(ob)
+
+			if '--disable-sym' in sys.argv:
+				is_symmetric = False
+			else:
+				is_symmetric = is_mesh_sym(ob)
+				if is_symmetric:
+					bpy.ops.object.mode_set(mode="EDIT")
+					bpy.ops.object.automirror()
+					bpy.ops.object.mode_set(mode="OBJECT")
+					ob.modifiers[0].use_mirror_merge=False
+
+			a,b,c = mesh_to_zig(ob, mirror=is_symmetric)
 			data  += a
 			setup += b
 			draw  += c
