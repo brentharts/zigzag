@@ -11,6 +11,16 @@ try:
 except:
 	plt = None
 
+try:
+	import py7zr
+except:
+	py7zr = None
+
+if sys.platform=='win32':
+	UPBGE = 'upbge-0.36.1-windows-x86_64/blender.exe'
+else:
+	UPBGE = 'upbge-0.36.1-linux-x86_64/blender'
+
 if '-gui' in sys.argv:
 	if plt:
 		matplotlib.use('QtAgg')
@@ -100,12 +110,63 @@ if '-gui' in sys.argv:
 				subprocess.check_call(cmd)
 			if btn: btn.hide()
 
+		def install_upbge(self, btn=None):
+			if sys.platform=='linux':
+				if btn:
+					btn.setText('installing...')
+					btn.repaint()
+
+				xz = 'https://github.com/UPBGE/upbge/releases/download/v0.36.1/upbge-0.36.1-linux-x86_64.tar.xz'
+				if not os.path.isfile('upbge-0.36.1-linux-x86_64.tar.xz'):
+					cmd = 'curl -L -o upbge-0.36.1-linux-x86_64.tar.xz %s' % xz
+					print(cmd)
+					subprocess.check_call(cmd.split())
+				cmd = 'tar -xvf upbge-0.36.1-linux-x86_64.tar.xz'
+				print(cmd)
+				subprocess.check_call(cmd.split())
+				if btn: btn.hide()
+
+			elif sys.platform=='win32':
+				if btn:
+					btn.setText('installing...')
+					btn.repaint()
+				z = 'https://github.com/UPBGE/upbge/releases/download/v0.36.1/upbge-0.36.1-windows-x86_64.7z'
+				if not os.path.isfile('upbge-0.36.1-windows-x86_64.7z'):
+					cmd = 'curl -L -o upbge-0.36.1-windows-x86_64.7z %s' % z
+					print(cmd)
+					subprocess.check_call(cmd.split())
+
+				with py7zr.SevenZipFile('upbge-0.36.1-windows-x86_64.7z', 'r') as archive:
+					archive.extractall()
+
+				if btn: btn.hide()
+
+			else:
+				webbrowser.open('https://upbge.org/#/download')
+
+
+		def open_folder(self, path):
+			if sys.platform=='win32':
+				os.startfile(os.path.normpath(path))
+			else:
+				subprocess.check_call(['xdg-open', path])
+
 		def __init__(self):
 			super().__init__()
 			self.blenders = []
 			self.resize(250, 150)
 			self.setWindowTitle('ZigZag')
 			vbox = QVBoxLayout()
+
+			self.tools = QHBoxLayout()
+			vbox.addLayout(self.tools)
+
+			if '--dev' in sys.argv:
+				btn = QPushButton("/tmp")
+				btn.clicked.connect(lambda:self.open_folder('/tmp') )
+				self.tools.addWidget(btn)
+
+			self.tools.addStretch(1)
 
 			if plt:
 				hbox = QHBoxLayout()
@@ -118,6 +179,16 @@ if '-gui' in sys.argv:
 			else:
 				btn = QPushButton('install matplotlib')
 				btn.clicked.connect(lambda:self.run_install('matplotlib',btn))
+				vbox.addWidget(btn)
+
+			if not py7zr:
+				btn = QPushButton('install py7zr')
+				btn.clicked.connect(lambda:self.run_install('py7zr',btn))
+				vbox.addWidget(btn)
+
+			if not os.path.isfile(UPBGE):
+				btn = QPushButton('install UPBGE')
+				btn.clicked.connect(lambda:self.install_upbge(btn))
 				vbox.addWidget(btn)
 
 			vbox.addWidget(QLabel('Blender Versions:'))
@@ -159,6 +230,9 @@ if '-gui' in sys.argv:
 							vbox.addWidget(QLabel(bpath))
 							self.blenders.append(bpath)
 
+			if os.path.isfile(UPBGE):
+				vbox.addWidget(QLabel(os.path.abspath(UPBGE)))
+				self.blenders.append(UPBGE)
 
 
 			vbox.addStretch(1)
@@ -166,6 +240,7 @@ if '-gui' in sys.argv:
 			button_ok = QPushButton("OK")
 			button_ok.clicked.connect(self.on_click)
 			button_cancel = QPushButton("Cancel")
+			button_cancel.clicked.connect(sys.exit)
 
 			hbox = QHBoxLayout()
 			hbox.addStretch(1)
@@ -213,7 +288,7 @@ if __name__=='__main__':
 			if not os.path.isfile('zig-windows-x86_64-0.13.0.zip'):
 				cmd = 'curl -L -o zig-windows-x86_64-0.13.0.zip %s' % zigzip
 				print(cmd)
-				subprocess.check_call(cmd)
+				subprocess.check_call(cmd.split())
 			with zipfile.ZipFile('zig-windows-x86_64-0.13.0.zip', 'r') as zip_ref:
 				zip_ref.extractall(_thisdir)
 
@@ -221,7 +296,7 @@ if __name__=='__main__':
 			if not os.path.isfile('zig-macos-aarch64-0.13.0.tar.xz'):
 				cmd = 'curl -L -o zig-macos-aarch64-0.13.0.tar.xz %s' % zigxz
 				print(cmd)
-				subprocess.check_call(cmd)
+				subprocess.check_call(cmd.split())
 			cmd = 'tar -xvf zig-macos-aarch64-0.13.0.tar.xz'
 			print(cmd)
 			subprocess.check_call(cmd.split())
