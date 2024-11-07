@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import os, sys, subprocess, base64, webbrowser, zipfile
+import os, sys, subprocess, base64, webbrowser, zipfile, atexit
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 import libwebzag
@@ -34,27 +34,81 @@ if '-gui' in sys.argv:
 			]
 			subprocess.check_call(cmd)
 
-		from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
+		from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
+		from PySide6.QtCore import QTimer
+	elif sys.platform=='darwin':
+		from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
+		from PySide6.QtCore import QTimer
 	else:
-		from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
+		from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
+		from PyQt6.QtCore import QTimer
 
 	class Window(QWidget):
-		def on_click(self):
+		def thread(self):
+			while self.proc:
+				#print('waiting...')
+				ln = self.proc.stdout.readline()
+				#print(ln)
+				if ln==b'':
+					print('blender exit')
+					break
+				self.bstdout.append(ln)
+
+		def clear_layout(self, layout):
+			for i in reversed(range(layout.count())):
+				widget = layout.itemAt(i).widget()
+				if widget is not None: widget.setParent(None)
+
+		def loop(self):
+			#if self.bstdout:
+			#	if self.sub_vbox.count() > 64:
+			#		self.clear_layout(self.sub_vbox)
+			for ln in self.bstdout:
+				ln = ln.decode('utf-8')
+				if not ln.strip(): continue
+				ln = ln.rstrip()
+				if len(ln) > 80: ln = ln[:80] + '...'
+
+				if self.sub_vbox.count() > 20:
+					wid=self.sub_vbox.itemAt(1).widget()
+					#self.sub_vbox.removeItem(wid)
+					if wid:
+						self.sub_vbox.removeWidget(wid)
+						wid.setParent(None)
+						wid.deleteLater()
+
+				self.sub_vbox.addWidget(QLabel(ln))
+			self.bstdout = []
+
+		def run_blender(self):
+			if self.tests_frame: self.tests_frame.hide()
+			self.clear_layout(self.sub_vbox)
+			self.move(10,64)  ## not working on linux?
 			cmd = [self.blenders[-1]]
 			for arg in sys.argv:
 				if arg.endswith('.blend'):
 					cmd.append(arg)
 					break
-			cmd +=['--python-exit-code', '1', '--python', __file__]
+			cmd +=['--window-geometry','640','100', '800','800', '--python-exit-code', '1', '--python', __file__]
 			exargs = []
 			for arg in sys.argv:
 				if arg.startswith('--'):
 					exargs.append(arg)
-			if exargs:
-				cmd.append('--')
-				cmd += exargs
+			#if exargs:
+			cmd.append('--')
+			cmd += exargs
+			cmd.append('--pipe')
 			print(cmd)
-			subprocess.check_call(cmd)
+			self.sub_vbox.addWidget(QLabel(cmd[0]))
+			#subprocess.check_call(cmd)
+			if self.proc:
+				self.proc.kill()
+				self.proc = None
+			self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+			atexit.register(lambda:self.proc.kill())
+			import threading
+			threading._start_new_thread(self.thread, tuple([]))
+			#self.thread()
 
 		def run_test(self, name):
 			plot = {}
@@ -153,10 +207,15 @@ if '-gui' in sys.argv:
 
 		def __init__(self):
 			super().__init__()
+			self.bstdout = []
+			self.timer = QTimer()
+			self.timer.timeout.connect(self.loop)
+			self.timer.start(100)
+			self.proc = None
 			self.blenders = []
 			self.resize(250, 150)
 			self.setWindowTitle('ZigZag')
-			vbox = QVBoxLayout()
+			self.main_vbox = vbox = QVBoxLayout()
 
 			self.tools = QHBoxLayout()
 			vbox.addLayout(self.tools)
@@ -168,27 +227,35 @@ if '-gui' in sys.argv:
 
 			self.tools.addStretch(1)
 
+			self.sub_vbox = vbox = QVBoxLayout()
+			self.main_vbox.addLayout(vbox)
+
+			self.tests_hbox = None
+
 			if plt:
+				self.tests_frame = QFrame()
 				hbox = QHBoxLayout()
+				self.tests_frame.setLayout(hbox)
 				hbox.addWidget(QLabel('Plot WASM size tests:'))
 				hbox.addStretch(1)
-				vbox.addLayout(hbox)
+				#vbox.addLayout(hbox)
+				vbox.addWidget(self.tests_frame)
 				btn = QPushButton("test1")
 				btn.clicked.connect(lambda : self.run_test("test1"))
 				hbox.addWidget(btn)
 			else:
 				btn = QPushButton('install matplotlib')
-				btn.clicked.connect(lambda:self.run_install('matplotlib',btn))
+				btn.clicked.connect(lambda b=btn:self.run_install('matplotlib',b))
 				vbox.addWidget(btn)
 
 			if not py7zr:
 				btn = QPushButton('install py7zr')
-				btn.clicked.connect(lambda:self.run_install('py7zr',btn))
+				btn.clicked.connect(lambda b=btn:self.run_install('py7zr',b))
 				vbox.addWidget(btn)
 
 			if not os.path.isfile(UPBGE):
 				btn = QPushButton('install UPBGE')
-				btn.clicked.connect(lambda:self.install_upbge(btn))
+				btn.clicked.connect(lambda b=btn:self.install_upbge(b))
 				vbox.addWidget(btn)
 
 			vbox.addWidget(QLabel('Blender Versions:'))
@@ -235,10 +302,10 @@ if '-gui' in sys.argv:
 				self.blenders.append(UPBGE)
 
 
-			vbox.addStretch(1)
+			self.main_vbox.addStretch(1)
 
 			button_ok = QPushButton("OK")
-			button_ok.clicked.connect(self.on_click)
+			button_ok.clicked.connect(self.run_blender)
 			button_cancel = QPushButton("Cancel")
 			button_cancel.clicked.connect(sys.exit)
 
@@ -247,10 +314,10 @@ if '-gui' in sys.argv:
 			hbox.addWidget(button_ok)
 			hbox.addWidget(button_cancel)
 
-			vbox.addLayout(hbox)
+			self.main_vbox.addLayout(hbox)
 
 			# Add vertical layout to window
-			self.setLayout(vbox)
+			self.setLayout(self.main_vbox)
 
 	app = QApplication(sys.argv)
 	window = Window()
@@ -698,6 +765,33 @@ def register():
 			self.layout.operator("zig.export_2d", icon="CONSOLE")
 			self.layout.operator("zig.export_3d", icon="CONSOLE")
 
+	@bpy.utils.register_class
+	class ZigZagMainOperator(bpy.types.Operator):
+		"zigzag main loop"
+		bl_idname = "zigzag.run"
+		bl_label = "zigzag_run"
+		bl_options = {'REGISTER'}
+		def modal(self, context, event):
+			if event.type == "TIMER":
+				#print('hello qt')
+				sys.stdout.flush()
+			return {'PASS_THROUGH'} # will not supress event bubbles
+
+		def invoke (self, context, event):
+			global _timer
+			if _timer is None:
+				_timer = self._timer = context.window_manager.event_timer_add(
+					time_step=0.05,
+					window=context.window
+				)
+				context.window_manager.modal_handler_add(self)
+				return {'RUNNING_MODAL'}
+			return {'FINISHED'}
+
+		def execute (self, context):
+			return self.invoke(context, None)
+
+_timer=None
 
 def safename(ob):
 	return ob.name.lower().replace('.', '_')
@@ -1485,6 +1579,9 @@ if __name__=='__main__':
 			getattr(libtestzag, tname)()
 			build_webgl(bpy.data.worlds[0], name='zig_'+tname, preview=False)
 			sys.exit()
+	if '--pipe' in sys.argv:
+		bpy.ops.zigzag.run()
+
 	if '--2d' in sys.argv:
 		if '--monkey' in sys.argv:
 			bpy.ops.object.gpencil_add(type='MONKEY')
@@ -1500,5 +1597,5 @@ if __name__=='__main__':
 		ob = libgenzag.monkey()
 		ob.rotation_euler.x = -math.pi/2
 		bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-		build_webgl(bpy.data.worlds[0])
+		#build_webgl(bpy.data.worlds[0])
 		
