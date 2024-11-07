@@ -49,6 +49,7 @@ if '-gui' in sys.argv:
 		def run_test(self, name):
 			plot = {}
 			for lang in 'zig c3 rust'.split():
+				if sys.platform=='win32' and lang=='rust': continue
 				engine = lang+'zag.py'
 				assert os.path.isfile(engine)
 				cmd = [self.blenders[-1], '--background', '--python', engine, '--', '--test='+name]
@@ -56,10 +57,18 @@ if '-gui' in sys.argv:
 				subprocess.check_call(cmd)
 
 				wasm = '/tmp/%s_%s.wasm' % (lang, name)
-				plot[lang] = {
+				info = {
 					'wasm' : len(open(wasm,'rb').read()),
 					'html' : len( open('%s_%s.html'%(lang,name),'rb').read() ),
 				}
+				wopt = '/tmp/%s_%s.opt.wasm' % (lang, name)
+				if os.path.isfile(wopt):
+					info['wasm-opt'] = len(open(wopt,'rb').read())
+				else:
+					wopt = '/tmp/%s_%s.strip.opt.wasm' % (lang, name)
+					if os.path.isfile(wopt):
+						info['wasm-opt'] = len(open(wopt,'rb').read())
+				plot[lang] = info
 
 			print(plot)
 			names = []
@@ -68,6 +77,7 @@ if '-gui' in sys.argv:
 			cmap = {'zig':'cyan', 'rust':'pink', 'c3':'orange'}
 			for lang in plot:
 				for ftype in plot[lang]:
+					if lang=='rust' and ftype=='wasm': continue
 					names.append('%s %s' % (lang, ftype))
 					values.append(plot[lang][ftype])
 					colors.append(cmap[lang])
@@ -77,6 +87,18 @@ if '-gui' in sys.argv:
 			ax.bar(names, values, color=colors)
 			plt.show()
 
+		def run_install(self, name, btn=None):
+			if sys.platform=='linux':
+				cmd = ['sudo', 'apt-get', 'install', 'python3-%s' %name]
+				print(cmd)
+				subprocess.check_call(cmd)
+			else:
+				py = 'python3'
+				if sys.platform=='win32': py = 'python'
+				cmd = [py, '-m', 'pip', 'install', name]
+				print(cmd)
+				subprocess.check_call(cmd)
+			if btn: btn.hide()
 
 		def __init__(self):
 			super().__init__()
@@ -93,6 +115,10 @@ if '-gui' in sys.argv:
 				btn = QPushButton("test1")
 				btn.clicked.connect(lambda : self.run_test("test1"))
 				hbox.addWidget(btn)
+			else:
+				btn = QPushButton('install matplotlib')
+				btn.clicked.connect(lambda:self.run_install('matplotlib',btn))
+				vbox.addWidget(btn)
 
 			vbox.addWidget(QLabel('Blender Versions:'))
 
