@@ -16,6 +16,11 @@ if sys.platform=='win32':
 else:
 	UPBGE = 'upbge-0.36.1-linux-x86_64/blender'
 
+try:
+	import OpenGL
+except:
+	print("warn PyOpenGL not installed")
+	OpenGL = None
 
 MEGASOLID = os.path.join(_thisdir,'pyqt6-rich-text-editor')
 if MEGASOLID not in sys.path: sys.path.append(MEGASOLID)
@@ -365,6 +370,11 @@ class Window(QWidget):
 		if not py7zr:
 			btn = QPushButton('install py7zr')
 			btn.clicked.connect(lambda b=btn:self.run_install('py7zr',b))
+			vbox.addWidget(btn)
+
+		if not OpenGL:
+			btn = QPushButton('install pyopengl')
+			btn.clicked.connect(lambda b=btn:self.run_install('pyopengl',b))
 			vbox.addWidget(btn)
 
 		if not os.path.isfile(UPBGE):
