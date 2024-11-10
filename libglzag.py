@@ -1,10 +1,23 @@
 import sys
 import numpy as np
 from OpenGL.GL import GL_COLOR_BUFFER_BIT, GL_FLOAT, GL_TRIANGLES, glClear, glClearColor, glDrawArrays
-from PyQt6.QtCore import Qt
-from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
-from PyQt6.QtOpenGLWidgets import QOpenGLWidget
-from PyQt6.QtWidgets import QApplication
+
+try:
+	import PySide6
+except:
+	PySide6=None
+
+if PySide6:
+	from PySide6.QtCore import Qt
+	from PySide6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
+	from PySide6.QtOpenGLWidgets import QOpenGLWidget
+	from PySide6.QtWidgets import QApplication
+
+else:
+	from PyQt6.QtCore import Qt
+	from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
+	from PyQt6.QtOpenGLWidgets import QOpenGLWidget
+	from PyQt6.QtWidgets import QApplication
 
 class Viewer(QOpenGLWidget):
 	def __init__(self, width=256, height=256):
@@ -64,6 +77,6 @@ class Viewer(QOpenGLWidget):
 if __name__ == "__main__":
 	QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL)
 	app = QApplication(sys.argv)
-	w = OpenGLWindow()
+	w = Viewer()
 	w.show()
 	sys.exit(app.exec())
