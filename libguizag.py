@@ -49,9 +49,7 @@ try:
 except:
 	py7zr = None
 
-
-
-if sys.platform=='win32':
+if sys.platform=='win32' or sys.platform=='darwin':
 	try:
 		import PySide6
 	except:
@@ -63,14 +61,24 @@ if sys.platform=='win32':
 
 	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
 	from PySide6.QtCore import QTimer, Qt
-elif sys.platform=='darwin':
-	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
-	from PySide6.QtCore import QTimer, Qt
+	from PySide6.QtGui import (
+		QFont,
+		QImage,
+		QTextDocument,
+		QPixmap,
+	)
+
 else:
 	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
 	from PyQt6.QtCore import QTimer, Qt
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
+	from PyQt6.QtGui import (
+		QFont,
+		QImage,
+		QTextDocument,
+		QPixmap,
+	)
 
 class ZigZagEditor( MegasolidCodeEditor ):
 	def reset(self):
@@ -80,6 +88,57 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.glview = None
 
 		super(ZigZagEditor,self).reset(alt_widget=self.glview)
+
+	def blend_to_qt(self, dump):
+		layout = QVBoxLayout()
+		container = QWidget()
+		container.setLayout(layout)
+		url = dump['URL']
+		a,b = os.path.split(url)
+		btn = QPushButton('open: '+b)
+		btn.setStyleSheet('background-color:gray; color:white')
+		btn.clicked.connect(lambda : self.open_blend(url))
+		layout.addWidget(btn)
+
+		if url not in self.blend_previews:
+			cmd = [codeeditor.BLENDER, url, '--background', '--python', __file__, '--', '--render=/tmp/__blend__.png']
+			print(cmd)
+			subprocess.check_call(cmd)
+			q = QImage('/tmp/__blend__.png')
+			qpix = QPixmap.fromImage(q)
+			self.blend_previews[url]=qpix
+
+		qlab = QLabel()
+		qlab.setPixmap(self.blend_previews[url])
+		layout.addWidget(qlab)
+
+
+		layout.addStretch(1)
+
+		for name in dump['objects']:
+			box = QHBoxLayout()
+			layout.addLayout(box)
+			btn = QPushButton(name)
+			btn.setCheckable(True)
+			btn.toggled.connect(
+				lambda x,n=name: self.toggle_blend_object(x,n, dump)
+			)
+			box.addWidget(btn)
+			pos = [str(round(v,1)) for v in dump['objects'][name]['pos']]
+			box.addWidget(QLabel(','.join(pos)))
+			box.addStretch(1)
+			if name in dump['meshes']:
+				btn = QPushButton('🮶')
+				btn.setFixedWidth(32)
+				box.addWidget(btn)
+				btn.clicked.connect(
+					lambda e,n=name: self.view_blender_object(n, url)
+				)
+
+		return container
+
+	def view_blender_object(self, obname, blend):
+		print('view_blender_object:', obname, blend)
 
 class Window(QWidget):
 	def open_code_editor(self, *args):
@@ -255,6 +314,8 @@ class Window(QWidget):
 
 	def __init__(self):
 		super().__init__()
+		self.setStyleSheet('background-color:rgb(42,42,42); color:lightgrey')
+
 		self.bstdout = []
 		self.timer = QTimer()
 		self.timer.timeout.connect(self.loop)
