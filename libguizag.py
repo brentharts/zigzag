@@ -99,6 +99,11 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		container = QWidget()
 		container.setLayout(layout)
 		url = dump['URL']
+
+		qsym = QLabel(self.blend_syms[url])
+		qsym.setStyleSheet('font-size:64px; color:cyan;')
+		layout.addWidget(qsym)
+
 		a,b = os.path.split(url)
 		btn = QPushButton('open: '+b)
 		btn.setStyleSheet('background-color:gray; color:white')
@@ -125,6 +130,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			layout.addLayout(box)
 			btn = QPushButton(name)
 			btn.setCheckable(True)
+			if name in dump['selected']:
+				btn.setChecked(True)
+
 			btn.toggled.connect(
 				lambda x,n=name: self.toggle_blend_object(x,n, dump)
 			)
@@ -133,7 +141,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			box.addWidget(QLabel(','.join(pos)))
 			box.addStretch(1)
 			if name in dump['meshes']:
-				btn = QPushButton('🮶')
+				#btn = QPushButton('🮶')  ## no font for this on Windows :(
+				btn = QPushButton('▶')
 				btn.setFixedWidth(32)
 				box.addWidget(btn)
 				btn.clicked.connect(
