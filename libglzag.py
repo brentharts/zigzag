@@ -2,13 +2,51 @@ import os, sys, json, subprocess
 
 def mesh_to_json(ob):
 	verts = []
-	faces = []
+	faces = {}
+	materials = []
+	mat = []
+	for vec in ob.matrix_local:
+		mat += [v for v in vec]
+
 	dump = {
+		'name':ob.name,
+		'data':ob.data.name,
 		'verts':verts,
 		'faces':faces,
+		'materials':materials,
+		'matrix': mat,
+		'pos': list(ob.location),
+		'rot': list(ob.rotation_euler),
+		'scl': list(ob.scale),
+		'parent':None,
 	}
+	if ob.parent:
+		dump['parent']=ob.parent.name
+
 	for v in ob.data.vertices:
 		verts += list(v.co)
+
+	indices_by_mat = faces
+	for p in ob.data.polygons:
+		if p.material_index not in indices_by_mat:
+			indices_by_mat[p.material_index] = {'num':0, 'indices':[]}
+
+		if len(p.vertices)==4:
+			x,y,z,w = p.vertices
+			indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+			indices_by_mat[p.material_index]['num'] += 6
+		elif len(p.vertices)==3:
+			x,y,z = p.vertices
+			w = 65000
+			indices_by_mat[p.material_index]['indices'].append((x,y,z,w))
+			indices_by_mat[p.material_index]['num'] += 3
+		else:
+			raise RuntimeError('TODO polygon len verts: %s' % len(p.vertices))
+
+	for mat in ob.data.materials:
+		materials.append({'name':mat.name, 'color':list(mat.diffuse_color)})
+
+
 	return dump
 
 
