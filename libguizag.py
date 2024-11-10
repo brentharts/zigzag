@@ -9,6 +9,26 @@ else:
 	UPBGE = 'upbge-0.36.1-linux-x86_64/blender'
 
 
+MEGASOLID = os.path.join(_thisdir,'pyqt6-rich-text-editor')
+if MEGASOLID not in sys.path: sys.path.append(MEGASOLID)
+
+def ensure_megasolid():
+	if not os.path.isdir(MEGASOLID):
+		cmd = 'git clone --depth 1 https://github.com/brentharts/pyqt6-rich-text-editor.git'
+		print(cmd)
+		subprocess.check_call(cmd.split())
+ensure_megasolid()
+
+
+if os.path.isdir(MEGASOLID):
+	import codeeditor
+	print(codeeditor)
+	from codeeditor import MegasolidCodeEditor
+else:
+	codeeditor = None
+	MegasolidCodeEditor = object
+
+
 try:
 	import matplotlib
 	import matplotlib.pyplot as plt
@@ -41,6 +61,7 @@ elif sys.platform=='darwin':
 else:
 	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
 	from PyQt6.QtCore import QTimer
+	from PyQt6 import QtCore, QtGui, QtWidgets
 
 class Window(QWidget):
 	def thread(self):
@@ -204,6 +225,11 @@ class Window(QWidget):
 		else:
 			subprocess.check_call(['xdg-open', path])
 
+	def open_code_editor(self, *args):
+		window = codeeditor.MegasolidCodeEditor()
+		window.reset()
+		self.megasolid = window
+
 	def __init__(self):
 		super().__init__()
 		self.bstdout = []
@@ -223,6 +249,11 @@ class Window(QWidget):
 			btn = QPushButton("/tmp")
 			btn.clicked.connect(lambda:self.open_folder('/tmp') )
 			self.tools.addWidget(btn)
+
+		btn = QPushButton("🖹")
+		btn.clicked.connect(self.open_code_editor)
+		self.tools.addWidget(btn)
+
 
 		self.tools.addStretch(1)
 
@@ -323,3 +354,15 @@ def main():
 	window = Window()
 	window.show()
 	sys.exit( app.exec() )
+
+
+if __name__=='__main__':
+	if '--megasolid' in sys.argv:
+		app = QApplication(sys.argv)
+		app.setApplicationName("Megasolid ZigZag")
+		window = codeeditor.MegasolidCodeEditor()
+		window.reset()
+		app.exec()
+	else:
+		main()
+
