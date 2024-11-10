@@ -153,6 +153,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 	def view_blender_object(self, obname, blend):
 		print('view_blender_object:', obname, blend)
+		if self.glview:
+			self.glview.view_blender_object(obname, blend)
 
 class Window(QWidget):
 	def open_code_editor(self, *args):
