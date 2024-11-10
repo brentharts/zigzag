@@ -1,6 +1,14 @@
 import os, sys, subprocess, atexit
 
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
+if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
+try:
+	import libglzag
+	print(libglzag)
+except ModuleNotFoundError as err:
+	print('WARN: failed to import libglzag')
+	print(err)
+	libglzag = None
 zigzagpy = os.path.join(_thisdir, 'zigzag.py')
 
 if sys.platform=='win32':
@@ -54,16 +62,35 @@ if sys.platform=='win32':
 		subprocess.check_call(cmd)
 
 	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
-	from PySide6.QtCore import QTimer
+	from PySide6.QtCore import QTimer, Qt
 elif sys.platform=='darwin':
 	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
-	from PySide6.QtCore import QTimer
+	from PySide6.QtCore import QTimer, Qt
 else:
 	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
-	from PyQt6.QtCore import QTimer
+	from PyQt6.QtCore import QTimer, Qt
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
+
+class ZigZagEditor( MegasolidCodeEditor ):
+	def reset(self):
+		if libglzag:
+			self.glview = libglzag.Viewer()
+		else:
+			self.glview = None
+
+		super(ZigZagEditor,self).reset(alt_widget=self.glview)
+
 class Window(QWidget):
+	def open_code_editor(self, *args):
+		#window = codeeditor.MegasolidCodeEditor()
+		#window.reset(alt_widget=QLabel('hello world'))
+		window = ZigZagEditor()
+		window.reset()
+		window.show()
+		self.megasolid = window
+
+
 	def thread(self):
 		while self.proc:
 			#print('waiting...')
@@ -225,10 +252,6 @@ class Window(QWidget):
 		else:
 			subprocess.check_call(['xdg-open', path])
 
-	def open_code_editor(self, *args):
-		window = codeeditor.MegasolidCodeEditor()
-		window.reset()
-		self.megasolid = window
 
 	def __init__(self):
 		super().__init__()
@@ -350,6 +373,7 @@ class Window(QWidget):
 		self.setLayout(self.main_vbox)
 
 def main():
+	QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL)
 	app = QApplication(sys.argv)
 	window = Window()
 	window.show()
