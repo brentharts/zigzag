@@ -113,6 +113,9 @@ class Viewer(QOpenGLWidget):
 		super().__init__()
 		self.setFixedSize(width, height)
 		print('new gl viewer', self)
+		self.buffers = {}
+		self.debug_draw = True
+		self.active_object = None
 
 	def initializeGL(self):
 		print('init gl')
@@ -154,7 +157,7 @@ class Viewer(QOpenGLWidget):
 	def resizeGL(self, w, h):
 		pass
 
-	def paintGL(self):
+	def debug_paintGL(self):
 		print('gl redraw')
 		glClear(GL_COLOR_BUFFER_BIT)
 		self.program.bind()
@@ -164,20 +167,51 @@ class Viewer(QOpenGLWidget):
 		glDrawArrays(GL_TRIANGLES, 0, 3)
 
 
+	def paintGL(self):
+		if self.debug_draw:
+			self.debug_paintGL()
+			return
+		if not self.active_object:
+			print('no active_object')
+			return
+		print('redraw:', self.active_object)
+		glClear(GL_COLOR_BUFFER_BIT)
+		self.program.bind()
+		ob = self.buffers[self.active_object]
+		ob['vbuffer'].bind()
+		self.program.setAttributeBuffer("aPosition", GL_FLOAT, 0, 2)
+		self.program.enableAttributeArray("aPosition")
+		glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )
+
 	def view_blender_object(self, name, blend):
-		cmd = [BLENDER, blend, '--background', '--python', __file__, '--', '--json=/tmp/__object__.json', '--dump=%s' % name]
-		print(cmd)
-		subprocess.check_call(cmd)
-		ob = json.loads(open('/tmp/__object__.json').read())
-		print('got json:', ob)
+		if name not in self.buffers:
+			cmd = [BLENDER, blend, '--background', '--python', __file__, '--', '--json=/tmp/__object__.json', '--dump=%s' % name]
+			print(cmd)
+			subprocess.check_call(cmd)
+			ob = json.loads(open('/tmp/__object__.json').read())
+			print('got json:', ob)
+
+			buff = QOpenGLBuffer()
+			print(name, buff)
+			buff.create()
+			buff.bind()
+			buff.allocate(np.array(ob['verts'], dtype=np.float32), len(ob['verts'])*4 )
+			a = {
+				'vbuffer': buff,
+			}
+			a.update(ob)
+			self.buffers[name]=a
+
+		self.active_object = name
+		self.debug_draw=False
 
 
 if __name__ == "__main__":
 	QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL)
 	app = QApplication(sys.argv)
 	w = Viewer()
+	w.show()
 	for arg in sys.argv:
 		if arg.endswith('.blend'):
 			w.view_blender_object('Cube', arg)
-	w.show()
 	sys.exit(app.exec())
