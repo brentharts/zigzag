@@ -149,6 +149,8 @@ void main(void){
 class Viewer(QOpenGLWidget):
 	def __init__(self, width=256, height=256):
 		super().__init__()
+		self._width=width
+		self._height=height
 		self.setFixedSize(width, height)
 		print('new gl viewer', self)
 		self.buffers = {}
@@ -159,13 +161,13 @@ class Viewer(QOpenGLWidget):
 		print('init gl')
 		#self.initializeOpenGLFunctions()
 		glClearColor(1, 0.5, 0.1, 1)
-		glViewport(0,0,256,256)
+		glViewport(0,0,self._width,self._height)
 
 		vertShaderSrc = """
-			attribute vec2 aPosition;
+			attribute vec3 vp;
 			void main()
 			{
-				gl_Position = vec4(aPosition, 0.0, 1.0);
+				gl_Position = vec4(vp, 1.0);
 			}
 		"""
 
@@ -188,30 +190,80 @@ class Viewer(QOpenGLWidget):
 		self.prog=None
 
 		vertPositions = np.array([
-			-0.5, -0.5,
-			0.5, -0.5,
-			0, 0.5], dtype=np.float32)
-		self.vertPosBuffer = QOpenGLBuffer()
-		self.vertPosBuffer.create()
-		self.vertPosBuffer.bind()
-		self.vertPosBuffer.allocate(vertPositions, len(vertPositions) * 4)
+			-0.5, -0.5, 0,
+			0.5, -0.5, 0,
+			0, 0.5, 0], dtype=np.float32)
+		if False:
+			self.vertPosBuffer = QOpenGLBuffer()
+			self.vertPosBuffer.create()
+			self.vertPosBuffer.bind()
+			self.vertPosBuffer.allocate(vertPositions, len(vertPositions) * 4)
+
+		vbo = glGenBuffers(1)
+		print('vbo:', vbo)
+		glBindBuffer(GL_ARRAY_BUFFER, vbo)
+		glBufferData(GL_ARRAY_BUFFER, vertPositions, GL_STATIC_DRAW)
+		self.vbo = vbo
+
+
+		indices = np.array([0,1,2], dtype=np.uint32)
+
+		ibo = glGenBuffers(1)
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, 3*4, indices, GL_STATIC_DRAW)
+		self.ibo = ibo
+
+		if False:
+			self.iBuffer = QOpenGLBuffer()
+			self.iBuffer.create()
+			self.iBuffer.bind()
+			self.iBuffer.allocate(indices, len(indices) * 4)
 
 
 	def resizeGL(self, w, h):
 		pass
 
-	def debug_paintGL(self):
+	def paintGL(self):
+		print('gl redraw')
+		glClear(GL_COLOR_BUFFER_BIT)
+		self.program.bind()
+
+		glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
+
+		if '--draw-elements' in sys.argv:
+			posloc = self.program.attributeLocation("vp")
+			print('posloc:', posloc)
+			glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
+			glEnableVertexAttribArray(posloc)
+
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo)
+
+			indices = np.array([0,1,2], dtype=np.uint32)
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_STATIC_DRAW)
+
+			glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0)
+
+		else:
+			self.program.setAttributeBuffer("vp", GL_FLOAT, 0, 3)
+			self.program.enableAttributeArray("vp")
+			glDrawArrays(GL_TRIANGLES, 0, 3)
+
+
+
+	def debug_paintGL_old(self):
 		print('gl redraw')
 		glClear(GL_COLOR_BUFFER_BIT)
 		self.program.bind()
 		self.vertPosBuffer.bind()
-		self.program.setAttributeBuffer("aPosition", GL_FLOAT, 0, 2)
-		self.program.enableAttributeArray("aPosition")
+		self.program.setAttributeBuffer("vp", GL_FLOAT, 0, 3)
+		self.program.enableAttributeArray("vp")
 		glDrawArrays(GL_TRIANGLES, 0, 3)
-		#glDrawElements(GL_TRIANGLES, len(indices), GL_UNSIGNED_INT, 0)
 
+		#self.iBuffer.bind()
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo)
+		glDrawElements(GL_TRIANGLES, 1, GL_UNSIGNED_INT, 0)
 
-	def paintGL(self):
+	def paintGL_TODO(self):
 		if self.debug_draw:
 			self.debug_paintGL()
 			return
@@ -223,12 +275,16 @@ class Viewer(QOpenGLWidget):
 		gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 		ob = self.buffers[self.active_object]
 		self.prog.bind()
+		#ob['VBUFF'].bind()
+		vbo = ob['VBUFF']
+		glBindBuffer(GL_ARRAY_BUFFER, vbo)
+
 
 
 		P = [1.3737387097273113,0.0,0.0,0.0,0.0, 1.8316516129697482,0.0,0.0,0.0,0.0, -1.02020202020202,-1.0,0.0,0.0,-2.0202020202020203,0.0];
 		V = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
 		V[14] -= 3.0
-		print(dir(self.program))  ## .programId() to get int ID
+		#print(dir(self.program))  ## .programId() to get int ID
 		#self.program.setUniformValueArray(0, np.array(P,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("P")
@@ -248,26 +304,33 @@ class Viewer(QOpenGLWidget):
 		print('T loc:', loc)
 
 
-		#ob['VBUFF'].bind()
-		vbo = ob['VBUFF']
-		glBindBuffer(GL_ARRAY_BUFFER, vbo)
-
 		#posloc = self.prog.attributeLocation("vp")
 		#print('posloc:', posloc)
 		#glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
 		#glEnableVertexAttribArray(posloc)
 
+		self.prog.setAttributeBuffer("vp", gl.GL_FLOAT, 0,3)
+		self.prog.enableAttributeArray("vp")
+
+
 		#self.program.setAttributeBuffer("aPosition", gl.GL_FLOAT, 0, 2)
 		#self.program.enableAttributeArray("aPosition")
-		#glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )
+
+		#glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )  ## draws a triangle
+
 		for matid in ob['faces']:
 			glUniform3fv(loc, 1, np.array([1,0.1,0.3], dtype=np.float32))
 			f = ob['faces'][matid]
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,f['IBUFF'])
+			ibo = f['IBUFF']
+			print('bind ibo:', ibo)
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo)
 			#glDrawElements(GL_TRIANGLES, len(f['INDICES']), GL_UNSIGNED_INT, 0)
 			n = len(f['INDICES']) #//4
 			print('draw tris:',n)
+			n = f['num']
+			print('numi', n)
 			glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, 0)
+			#glDrawElements(GL_TRIANGLES, 4, GL_UNSIGNED_INT, 0)
 
 	def view_blender_object(self, name, blend):
 		if not self.prog:
@@ -293,11 +356,17 @@ class Viewer(QOpenGLWidget):
 			print('vbo:', vbo)
 			glBindBuffer(GL_ARRAY_BUFFER, vbo)
 			vertices = np.array(ob['verts'], dtype=np.float32)
+			print('verts:', vertices)
 			glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)
-			posloc = self.prog.attributeLocation("vp")
-			print('posloc:', posloc)
-			glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
-			glEnableVertexAttribArray(posloc)
+			
+			#posloc = self.prog.attributeLocation("vp")
+			#print('posloc:', posloc)
+			#glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
+			#glEnableVertexAttribArray(posloc)
+
+			self.prog.setAttributeBuffer("vp", gl.GL_FLOAT, 0, 3)
+			self.prog.enableAttributeArray("vp")
+
 
 			a = {
 				'VBUFF': vbo,
@@ -336,7 +405,7 @@ def quads_to_tris(quads):
 if __name__ == "__main__":
 	QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL)
 	app = QApplication(sys.argv)
-	w = Viewer()
+	w = Viewer(800, 600)
 	w.show()
 	for arg in sys.argv:
 		if arg.endswith('.blend'):
