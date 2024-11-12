@@ -89,7 +89,12 @@ else:
 
 
 import numpy as np
-from OpenGL.GL import GL_COLOR_BUFFER_BIT, GL_FLOAT, GL_TRIANGLES, glClear, glClearColor, glDrawArrays
+from OpenGL.GL import GL_COLOR_BUFFER_BIT, GL_FLOAT, GL_TRIANGLES, GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER, GL_FALSE
+from OpenGL.GL import GL_UNSIGNED_INT
+from OpenGL.GL import glClear, glClearColor, glDrawArrays, glGenBuffers, glBindBuffer, glDrawElements, glViewport
+from OpenGL.GL import glBufferData, glEnableVertexAttribArray, glVertexAttribPointer, glUniformMatrix4fv, glUniform3fv
+
+import OpenGL.GL as gl
 
 try:
 	import PySide6
@@ -101,13 +106,46 @@ if PySide6:
 	from PySide6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
 	from PySide6.QtOpenGLWidgets import QOpenGLWidget
 	from PySide6.QtWidgets import QApplication
-
 else:
 	from PyQt6.QtCore import Qt
 	from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
 	from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 	from PyQt6.QtWidgets import QApplication
+	#from PyQt6.QtOpenGL import QOpenGLFunctions_4_1_Core as QOpenGLFunctions
+	#from PyQt6.QtOpenGL import QOpenGLFunctions_2_1_Core as QOpenGLFunctions
 
+
+
+# VVS vertex view space
+VSHADER = '''
+attribute vec3 vp;
+uniform mat4 P;
+uniform mat4 V;
+uniform mat4 M;
+uniform vec3 T;
+varying vec3 VVS;
+varying vec3 VC;
+void main(void){
+	VVS=(M*V*vec4(vp,1.0)).xyz;
+	gl_Position=P*V*M*vec4(vp,1.);
+	VC=T;
+}
+'''
+
+FSHADER = '''
+varying vec3 VVS;
+varying vec3 VC;
+void main(void){
+	vec3 U=dFdx(VVS);
+	vec3 V=dFdy(VVS);
+	vec3 N=normalize(cross(U,V));
+	vec3 f=vec3(1.1,1.1,1.1)*N.z;
+	gl_FragColor=vec4( (VC+(N*0.2))*f ,1.0);
+}
+'''
+
+#TypeError: could not convert 'Viewer' to 'QOpenGLFunctions_4_1_Core'
+#class Viewer(QOpenGLWidget, QOpenGLFunctions):
 class Viewer(QOpenGLWidget):
 	def __init__(self, width=256, height=256):
 		super().__init__()
@@ -119,7 +157,9 @@ class Viewer(QOpenGLWidget):
 
 	def initializeGL(self):
 		print('init gl')
+		#self.initializeOpenGLFunctions()
 		glClearColor(1, 0.5, 0.1, 1)
+		glViewport(0,0,256,256)
 
 		vertShaderSrc = """
 			attribute vec2 aPosition;
@@ -145,6 +185,8 @@ class Viewer(QOpenGLWidget):
 		self.program.link()
 		self.program.bind()
 
+		self.prog=None
+
 		vertPositions = np.array([
 			-0.5, -0.5,
 			0.5, -0.5,
@@ -153,6 +195,7 @@ class Viewer(QOpenGLWidget):
 		self.vertPosBuffer.create()
 		self.vertPosBuffer.bind()
 		self.vertPosBuffer.allocate(vertPositions, len(vertPositions) * 4)
+
 
 	def resizeGL(self, w, h):
 		pass
@@ -165,6 +208,7 @@ class Viewer(QOpenGLWidget):
 		self.program.setAttributeBuffer("aPosition", GL_FLOAT, 0, 2)
 		self.program.enableAttributeArray("aPosition")
 		glDrawArrays(GL_TRIANGLES, 0, 3)
+		#glDrawElements(GL_TRIANGLES, len(indices), GL_UNSIGNED_INT, 0)
 
 
 	def paintGL(self):
@@ -174,16 +218,65 @@ class Viewer(QOpenGLWidget):
 		if not self.active_object:
 			print('no active_object')
 			return
+
 		print('redraw:', self.active_object)
-		glClear(GL_COLOR_BUFFER_BIT)
-		self.program.bind()
+		gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 		ob = self.buffers[self.active_object]
-		ob['vbuffer'].bind()
-		self.program.setAttributeBuffer("aPosition", GL_FLOAT, 0, 2)
-		self.program.enableAttributeArray("aPosition")
-		glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )
+		self.prog.bind()
+
+
+		P = [1.3737387097273113,0.0,0.0,0.0,0.0, 1.8316516129697482,0.0,0.0,0.0,0.0, -1.02020202020202,-1.0,0.0,0.0,-2.0202020202020203,0.0];
+		V = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
+		V[14] -= 3.0
+		print(dir(self.program))  ## .programId() to get int ID
+		#self.program.setUniformValueArray(0, np.array(P,dtype=np.float32))
+
+		loc = self.prog.uniformLocation("P")
+		print('P loc:', loc)
+		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(P,dtype=np.float32))
+
+		loc = self.prog.uniformLocation("V")
+		print('V loc:', loc)
+		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(V,dtype=np.float32))
+
+		loc = self.prog.uniformLocation("M")
+		print('M loc:', loc)
+		M = ob['matrix']
+		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(M,dtype=np.float32))
+
+		loc = self.prog.uniformLocation("T")
+		print('T loc:', loc)
+
+
+		#ob['VBUFF'].bind()
+		vbo = ob['VBUFF']
+		glBindBuffer(GL_ARRAY_BUFFER, vbo)
+
+		#posloc = self.prog.attributeLocation("vp")
+		#print('posloc:', posloc)
+		#glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
+		#glEnableVertexAttribArray(posloc)
+
+		#self.program.setAttributeBuffer("aPosition", gl.GL_FLOAT, 0, 2)
+		#self.program.enableAttributeArray("aPosition")
+		#glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )
+		for matid in ob['faces']:
+			glUniform3fv(loc, 1, np.array([1,0.1,0.3], dtype=np.float32))
+			f = ob['faces'][matid]
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,f['IBUFF'])
+			#glDrawElements(GL_TRIANGLES, len(f['INDICES']), GL_UNSIGNED_INT, 0)
+			n = len(f['INDICES']) #//4
+			print('draw tris:',n)
+			glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, 0)
 
 	def view_blender_object(self, name, blend):
+		if not self.prog:
+			self.prog = QOpenGLShaderProgram(self)
+			self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, VSHADER)
+			self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, FSHADER)
+			self.prog.link()
+		self.prog.bind()
+
 		if name not in self.buffers:
 			cmd = [BLENDER, blend, '--background', '--python', __file__, '--', '--json=/tmp/__object__.json', '--dump=%s' % name]
 			print(cmd)
@@ -191,20 +284,54 @@ class Viewer(QOpenGLWidget):
 			ob = json.loads(open('/tmp/__object__.json').read())
 			print('got json:', ob)
 
-			buff = QOpenGLBuffer()
-			print(name, buff)
-			buff.create()
-			buff.bind()
-			buff.allocate(np.array(ob['verts'], dtype=np.float32), len(ob['verts'])*4 )
+			#buff = QOpenGLBuffer()
+			#print(name, buff)
+			#buff.create()
+			#buff.bind()
+			#buff.allocate(np.array(ob['verts'], dtype=np.float32), len(ob['verts'])*4 )
+			vbo = glGenBuffers(1)
+			print('vbo:', vbo)
+			glBindBuffer(GL_ARRAY_BUFFER, vbo)
+			vertices = np.array(ob['verts'], dtype=np.float32)
+			glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)
+			posloc = self.prog.attributeLocation("vp")
+			print('posloc:', posloc)
+			glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
+			glEnableVertexAttribArray(posloc)
+
 			a = {
-				'vbuffer': buff,
+				'VBUFF': vbo,
 			}
 			a.update(ob)
 			self.buffers[name]=a
+			for matid in a['faces']:
+				f = a['faces'][matid]
+				#indices = []
+				#for quad in f['indices']:
+				#	indices += quad
+				#print(indices)
+				indices = quads_to_tris(f['indices'])
+				f['INDICES'] = np.array(indices,dtype=np.uint32)
+				ibo = glGenBuffers(1)
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
+				glBufferData(GL_ELEMENT_ARRAY_BUFFER, f['INDICES'], GL_STATIC_DRAW)
+				f['IBUFF'] = ibo
+
+				#glEnableVertexAttribArray(0)
+				#self.program.glEnableVertexAttribArray(0)
+				#glVertexAttribPointer(0,3, GL_FLOAT, GL_FALSE, 0,0)
 
 		self.active_object = name
 		self.debug_draw=False
 
+def quads_to_tris(quads):
+	tris = []
+	for q in quads:
+		a,b,c,d = q
+		tris += [a,b,c]
+		if d == 65000: continue
+		tris += [c,d,a]
+	return tris
 
 if __name__ == "__main__":
 	QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL)
