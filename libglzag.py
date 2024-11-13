@@ -90,8 +90,8 @@ else:
 
 import numpy as np
 from OpenGL.GL import GL_COLOR_BUFFER_BIT, GL_FLOAT, GL_TRIANGLES, GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER, GL_FALSE
-from OpenGL.GL import GL_UNSIGNED_INT
-from OpenGL.GL import glClear, glClearColor, glDrawArrays, glGenBuffers, glBindBuffer, glDrawElements, glViewport
+from OpenGL.GL import GL_UNSIGNED_INT, GL_UNSIGNED_SHORT
+from OpenGL.GL import glClear, glClearColor, glDrawArrays, glGenBuffers, glBindBuffer, glDrawElements, glViewport, glGetError
 from OpenGL.GL import glBufferData, glEnableVertexAttribArray, glVertexAttribPointer, glUniformMatrix4fv, glUniform3fv
 
 import OpenGL.GL as gl
@@ -193,11 +193,6 @@ class Viewer(QOpenGLWidget):
 			-0.5, -0.5, 0,
 			0.5, -0.5, 0,
 			0, 0.5, 0], dtype=np.float32)
-		if False:
-			self.vertPosBuffer = QOpenGLBuffer()
-			self.vertPosBuffer.create()
-			self.vertPosBuffer.bind()
-			self.vertPosBuffer.allocate(vertPositions, len(vertPositions) * 4)
 
 		vbo = glGenBuffers(1)
 		print('vbo:', vbo)
@@ -205,19 +200,17 @@ class Viewer(QOpenGLWidget):
 		glBufferData(GL_ARRAY_BUFFER, vertPositions, GL_STATIC_DRAW)
 		self.vbo = vbo
 
-
-		indices = np.array([0,1,2], dtype=np.uint32)
+		#indices = np.array([0,1,2], dtype=np.uint32)
+		indices = np.array([0,1,2], dtype=np.uint16)
 
 		ibo = glGenBuffers(1)
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, 3*4, indices, GL_STATIC_DRAW)
-		self.ibo = ibo
+		print('gl error:', glGetError())
 
-		if False:
-			self.iBuffer = QOpenGLBuffer()
-			self.iBuffer.create()
-			self.iBuffer.bind()
-			self.iBuffer.allocate(indices, len(indices) * 4)
+		#glBufferData(GL_ELEMENT_ARRAY_BUFFER, 3*4, indices, GL_STATIC_DRAW)
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, 3*2, indices, GL_STATIC_DRAW)
+		print('gl error:', glGetError())
+		self.ibo = ibo
 
 
 	def resizeGL(self, w, h):
@@ -234,14 +227,22 @@ class Viewer(QOpenGLWidget):
 			posloc = self.program.attributeLocation("vp")
 			print('posloc:', posloc)
 			glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
+			print('gl error:', glGetError())
+
 			glEnableVertexAttribArray(posloc)
+			print('gl error:', glGetError())
 
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo)
+			print('gl error:', glGetError())
 
-			indices = np.array([0,1,2], dtype=np.uint32)
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_STATIC_DRAW)
+			#indices = np.array([0,1,2], dtype=np.uint32)
+			#glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices, GL_STATIC_DRAW)
+			#print('gl error:', glGetError())
 
-			glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0)
+			#glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0)
+
+			glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, None)  ## this must be None and not 0
+			print('gl error:', glGetError())
 
 		else:
 			self.program.setAttributeBuffer("vp", GL_FLOAT, 0, 3)
