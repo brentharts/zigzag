@@ -216,8 +216,8 @@ class Viewer(QOpenGLWidget):
 	def resizeGL(self, w, h):
 		pass
 
-	def paintGL(self):
-		print('gl redraw')
+	def debug_paintGL(self):
+		print('gl redraw debug')
 		glClear(GL_COLOR_BUFFER_BIT)
 		self.program.bind()
 
@@ -250,21 +250,7 @@ class Viewer(QOpenGLWidget):
 			glDrawArrays(GL_TRIANGLES, 0, 3)
 
 
-
-	def debug_paintGL_old(self):
-		print('gl redraw')
-		glClear(GL_COLOR_BUFFER_BIT)
-		self.program.bind()
-		self.vertPosBuffer.bind()
-		self.program.setAttributeBuffer("vp", GL_FLOAT, 0, 3)
-		self.program.enableAttributeArray("vp")
-		glDrawArrays(GL_TRIANGLES, 0, 3)
-
-		#self.iBuffer.bind()
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.ibo)
-		glDrawElements(GL_TRIANGLES, 1, GL_UNSIGNED_INT, 0)
-
-	def paintGL_TODO(self):
+	def paintGL(self):
 		if self.debug_draw:
 			self.debug_paintGL()
 			return
@@ -330,7 +316,7 @@ class Viewer(QOpenGLWidget):
 			print('draw tris:',n)
 			n = f['num']
 			print('numi', n)
-			glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, 0)
+			glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, None)
 			#glDrawElements(GL_TRIANGLES, 4, GL_UNSIGNED_INT, 0)
 
 	def view_blender_object(self, name, blend):
@@ -393,6 +379,7 @@ class Viewer(QOpenGLWidget):
 
 		self.active_object = name
 		self.debug_draw=False
+		self.update()  ## calls repaints
 
 def quads_to_tris(quads):
 	tris = []
