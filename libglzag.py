@@ -1,4 +1,4 @@
-import os, sys, json, subprocess
+import os, sys, json, subprocess, math
 
 def mesh_to_json(ob):
 	import bpy
@@ -118,6 +118,7 @@ except:
 
 if PySide6:
 	from PySide6.QtCore import Qt
+	from PySide6.QtGui import QMatrix4x4, QVector3D
 	from PySide6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
 	from PySide6.QtOpenGLWidgets import QOpenGLWidget
 	from PySide6.QtWidgets import QApplication
@@ -165,6 +166,7 @@ void main(void){
 class Viewer(QOpenGLWidget):
 	def __init__(self, width=256, height=256):
 		super().__init__()
+		self.setMouseTracking(True) 
 		self._width=width
 		self._height=height
 		self.setFixedSize(width, height)
@@ -173,6 +175,20 @@ class Viewer(QOpenGLWidget):
 		self.debug_draw = True
 		self.active_object = None
 		self.projection = None
+		self.spin_up = 0
+		self.spin_side = 0
+
+	def mouseMoveEvent(self, event):
+		pos = event.pos()
+		x = pos.x() / self._width
+		y = pos.y() / self._height
+		x -= 0.5
+		y -= 0.5
+		#print(x,y)
+		self.spin_side = x
+		self.spin_up = y
+		self.update()
+
 
 	def initializeGL(self):
 		print('init gl')
@@ -296,38 +312,41 @@ class Viewer(QOpenGLWidget):
 			P = list(self.projection)
 		else:
 			view = QMatrix4x4()
+			cx = math.sin(self.spin_side + math.radians(180) ) * 5
+			cy = math.cos(self.spin_side + math.radians(180) ) * 5
 			view.lookAt(
-				QVector3D(0,-5,0), # camera pos
+				#QVector3D(0,-5,0), # camera pos
+				QVector3D(cx,cy,self.spin_up), # camera pos
 				QVector3D(0,0,0),    # look at pos
 				QVector3D(0,0,1),    # up vector
 			)
-			print('view:', view)
+			#print('view:', view)
 			V = list(view.data())
 			proj = QMatrix4x4()
 			proj.perspective(45.0, self._width / self._height, 1.0, 100.0)
-			print('proj:', proj)
+			#print('proj:', proj)
 			#pv = proj * view
 			P = list(proj.data())
-			print(P)
+			#print(P)
 
 		#print(dir(self.program))  ## .programId() to get int ID
 		#self.program.setUniformValueArray(0, np.array(P,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("P")
-		print('P loc:', loc)
+		#print('P loc:', loc)
 		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(P,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("V")
-		print('V loc:', loc)
+		#print('V loc:', loc)
 		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(V,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("M")
-		print('M loc:', loc)
+		#print('M loc:', loc)
 		M = ob['matrix']
 		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(M,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("T")
-		print('T loc:', loc)
+		#print('T loc:', loc)
 
 		self.prog.setAttributeBuffer("vp", gl.GL_FLOAT, 0,3)
 		self.prog.enableAttributeArray("vp")
