@@ -1,4 +1,4 @@
-import os, sys, subprocess, atexit
+import os, sys, subprocess, atexit, string
 
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
@@ -463,7 +463,29 @@ def main():
 
 
 if __name__=='__main__':
-	if '--megasolid' in sys.argv:
+	blends = []
+	for arg in sys.argv:
+		if arg.endswith('.blend'):
+			blends.append(arg)
+
+	if blends:
+		QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL)
+		app = QApplication(sys.argv)
+		app.setApplicationName("Megasolid ZigZag")
+		window = ZigZagEditor()
+		window.reset()
+
+		user_vars = list(string.ascii_letters)
+		user_vars.reverse()
+		cur = window.editor.textCursor()
+		for blend in blends:
+			cur.insertText('%s = ' % user_vars.pop())
+			window.on_new_blend(blend)
+			cur.insertText('\n')
+		app.exec()
+
+
+	elif '--megasolid' in sys.argv:
 		app = QApplication(sys.argv)
 		app.setApplicationName("Megasolid ZigZag")
 		window = codeeditor.MegasolidCodeEditor()
