@@ -1,3 +1,4 @@
+import os, sys
 from random import random, uniform, choice
 try:
 	import bpy, mathutils
@@ -157,3 +158,21 @@ def monkey(materials=True):
 			poly.material_index=11
 
 	return ob
+
+sym_gen = {
+	'🐵' : monkey,
+}
+
+if __name__=='__main__':
+	out = None
+	for arg in sys.argv:
+		if arg.startswith('--out='):
+			out = arg.split('=')[-1]
+		elif arg.startswith('--generate='):
+			sym = arg.split('=')[-1]
+			if sym in sym_gen:
+				sym_gen[sym]()
+			else:
+				globals()[sym]()
+	if out:
+		bpy.ops.wm.save_as_mainfile(filepath=out)
