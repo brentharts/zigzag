@@ -156,12 +156,38 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if self.glview:
 			self.glview.view_blender_object(obname, blend)
 
+	def load_blends(self, blends):
+		user_vars = list(string.ascii_letters)
+		user_vars.reverse()
+		cur = self.editor.textCursor()
+		for blend in blends:
+			cur.insertText('%s = ' % user_vars.pop())
+			self.on_new_blend(blend)
+			cur.insertText('\n')
+
+
 class Window(QWidget):
 	def open_code_editor(self, *args):
 		#window = codeeditor.MegasolidCodeEditor()
 		#window.reset(alt_widget=QLabel('hello world'))
 		window = ZigZagEditor()
 		window.reset()
+		window.show()
+		self.megasolid = window
+
+	def blendgen(self, sym):
+		blender = self.blenders[-1]
+		if sys.platform=='win32':
+			out = 'C:\\tmp\\%s.blend' % sym
+		else:
+			out = '/tmp/%s.blend' % sym
+		cmd = [blender, '--background', '--python-exit-code', '1', '--python', os.path.join(_thisdir,'libgenzag.py'), '--', '--generate=%s' % sym, '--out='+out]
+		print(cmd)
+		subprocess.check_call(cmd)
+
+		window = ZigZagEditor()
+		window.reset()
+		window.load_blends([out])
 		window.show()
 		self.megasolid = window
 
@@ -354,6 +380,10 @@ class Window(QWidget):
 		btn.clicked.connect(self.open_code_editor)
 		self.tools.addWidget(btn)
 
+		btn = QPushButton("🐵")
+		btn.clicked.connect( lambda: self.blendgen("🐵") )
+		self.tools.addWidget(btn)
+
 
 		self.tools.addStretch(1)
 
@@ -475,13 +505,7 @@ if __name__=='__main__':
 		window = ZigZagEditor()
 		window.reset()
 
-		user_vars = list(string.ascii_letters)
-		user_vars.reverse()
-		cur = window.editor.textCursor()
-		for blend in blends:
-			cur.insertText('%s = ' % user_vars.pop())
-			window.on_new_blend(blend)
-			cur.insertText('\n')
+		window.load_blends( blends )
 		app.exec()
 
 
