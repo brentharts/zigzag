@@ -1,6 +1,7 @@
 import os, sys, json, subprocess
 
 def mesh_to_json(ob):
+	import bpy
 	verts = []
 	faces = {}
 	materials = []
@@ -19,9 +20,17 @@ def mesh_to_json(ob):
 		'rot': list(ob.rotation_euler),
 		'scl': list(ob.scale),
 		'parent':None,
+		'camera':None,
 	}
 	if ob.parent:
 		dump['parent']=ob.parent.name
+
+	if 'Camera' in bpy.data.objects:
+		cam = bpy.data.objects['Camera']
+		mat = []
+		for vec in cam.matrix_local:
+			mat += [v for v in vec]
+		dump['camera'] = mat
 
 	for v in ob.data.vertices:
 		verts += list(v.co)
@@ -90,9 +99,9 @@ else:
 
 import numpy as np
 from OpenGL.GL import GL_COLOR_BUFFER_BIT, GL_FLOAT, GL_TRIANGLES, GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER, GL_FALSE
-from OpenGL.GL import GL_UNSIGNED_INT, GL_UNSIGNED_SHORT
+from OpenGL.GL import GL_UNSIGNED_INT, GL_UNSIGNED_SHORT, GL_DEPTH_TEST
 from OpenGL.GL import glClear, glClearColor, glDrawArrays, glGenBuffers, glBindBuffer, glDrawElements, glViewport, glGetError
-from OpenGL.GL import glBufferData, glEnableVertexAttribArray, glVertexAttribPointer, glUniformMatrix4fv, glUniform3fv
+from OpenGL.GL import glBufferData, glEnableVertexAttribArray, glVertexAttribPointer, glUniformMatrix4fv, glUniform3fv, glEnable
 
 import OpenGL.GL as gl
 
@@ -108,6 +117,7 @@ if PySide6:
 	from PySide6.QtWidgets import QApplication
 else:
 	from PyQt6.QtCore import Qt
+	from PyQt6.QtGui import QMatrix4x4, QVector3D
 	from PyQt6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram
 	from PyQt6.QtOpenGLWidgets import QOpenGLWidget
 	from PyQt6.QtWidgets import QApplication
@@ -156,11 +166,12 @@ class Viewer(QOpenGLWidget):
 		self.buffers = {}
 		self.debug_draw = True
 		self.active_object = None
+		self.projection = None
 
 	def initializeGL(self):
 		print('init gl')
 		#self.initializeOpenGLFunctions()
-		glClearColor(1, 0.5, 0.1, 1)
+		glClearColor(0.5, 0.5, 0.5, 1)
 		glViewport(0,0,self._width,self._height)
 
 		vertShaderSrc = """
@@ -261,6 +272,8 @@ class Viewer(QOpenGLWidget):
 			print('redraw:', self.active_object)
 
 		gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+		glEnable(GL_DEPTH_TEST)
+
 		ob = self.buffers[self.active_object]
 		self.prog.bind()
 		#ob['VBUFF'].bind()
@@ -268,10 +281,29 @@ class Viewer(QOpenGLWidget):
 		glBindBuffer(GL_ARRAY_BUFFER, vbo)
 
 
-
 		P = [1.3737387097273113,0.0,0.0,0.0,0.0, 1.8316516129697482,0.0,0.0,0.0,0.0, -1.02020202020202,-1.0,0.0,0.0,-2.0202020202020203,0.0];
 		V = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
 		V[14] -= 3.0
+
+
+		if self.projection:
+			P = list(self.projection)
+		else:
+			view = QMatrix4x4()
+			view.lookAt(
+				QVector3D(0,-5,0), # camera pos
+				QVector3D(0,0,0),    # look at pos
+				QVector3D(0,0,1),    # up vector
+			)
+			print('view:', view)
+			V = list(view.data())
+			proj = QMatrix4x4()
+			proj.perspective(45.0, self._width / self._height, 1.0, 100.0)
+			print('proj:', proj)
+			#pv = proj * view
+			P = list(proj.data())
+			print(P)
+
 		#print(dir(self.program))  ## .programId() to get int ID
 		#self.program.setUniformValueArray(0, np.array(P,dtype=np.float32))
 
@@ -320,6 +352,9 @@ class Viewer(QOpenGLWidget):
 			subprocess.check_call(cmd)
 			ob = json.loads(open('/tmp/__object__.json').read())
 			print('got json:', ob)
+
+			#if ob['camera']:  ## TODO, for now just rotate meshes on export
+			#	self.projection = ob['camera']
 
 			vbo = glGenBuffers(1)
 			print('vbo:', vbo)
