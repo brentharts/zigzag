@@ -257,8 +257,9 @@ class Viewer(QOpenGLWidget):
 		if not self.active_object:
 			print('no active_object')
 			return
+		if '--debug' in sys.argv:
+			print('redraw:', self.active_object)
 
-		print('redraw:', self.active_object)
 		gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
 		ob = self.buffers[self.active_object]
 		self.prog.bind()
@@ -290,34 +291,20 @@ class Viewer(QOpenGLWidget):
 		loc = self.prog.uniformLocation("T")
 		print('T loc:', loc)
 
-
-		#posloc = self.prog.attributeLocation("vp")
-		#print('posloc:', posloc)
-		#glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
-		#glEnableVertexAttribArray(posloc)
-
 		self.prog.setAttributeBuffer("vp", gl.GL_FLOAT, 0,3)
 		self.prog.enableAttributeArray("vp")
 
 
 		#self.program.setAttributeBuffer("aPosition", gl.GL_FLOAT, 0, 2)
 		#self.program.enableAttributeArray("aPosition")
-
 		#glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )  ## draws a triangle
 
 		for matid in ob['faces']:
 			glUniform3fv(loc, 1, np.array([1,0.1,0.3], dtype=np.float32))
 			f = ob['faces'][matid]
 			ibo = f['IBUFF']
-			print('bind ibo:', ibo)
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo)
-			#glDrawElements(GL_TRIANGLES, len(f['INDICES']), GL_UNSIGNED_INT, 0)
-			n = len(f['INDICES']) #//4
-			print('draw tris:',n)
-			n = f['num']
-			print('numi', n)
-			glDrawElements(GL_TRIANGLES, n, GL_UNSIGNED_INT, None)
-			#glDrawElements(GL_TRIANGLES, 4, GL_UNSIGNED_INT, 0)
+			glDrawElements(GL_TRIANGLES, len(f['INDICES']), GL_UNSIGNED_SHORT, None)
 
 	def view_blender_object(self, name, blend):
 		if not self.prog:
@@ -334,23 +321,16 @@ class Viewer(QOpenGLWidget):
 			ob = json.loads(open('/tmp/__object__.json').read())
 			print('got json:', ob)
 
-			#buff = QOpenGLBuffer()
-			#print(name, buff)
-			#buff.create()
-			#buff.bind()
-			#buff.allocate(np.array(ob['verts'], dtype=np.float32), len(ob['verts'])*4 )
 			vbo = glGenBuffers(1)
 			print('vbo:', vbo)
 			glBindBuffer(GL_ARRAY_BUFFER, vbo)
 			vertices = np.array(ob['verts'], dtype=np.float32)
 			print('verts:', vertices)
-			glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)
-			
+			glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)			
 			#posloc = self.prog.attributeLocation("vp")
 			#print('posloc:', posloc)
-			#glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,0)
+			#glVertexAttribPointer(posloc,3, GL_FLOAT, GL_FALSE, 0,None)
 			#glEnableVertexAttribArray(posloc)
-
 			self.prog.setAttributeBuffer("vp", gl.GL_FLOAT, 0, 3)
 			self.prog.enableAttributeArray("vp")
 
@@ -362,24 +342,17 @@ class Viewer(QOpenGLWidget):
 			self.buffers[name]=a
 			for matid in a['faces']:
 				f = a['faces'][matid]
-				#indices = []
-				#for quad in f['indices']:
-				#	indices += quad
-				#print(indices)
 				indices = quads_to_tris(f['indices'])
-				f['INDICES'] = np.array(indices,dtype=np.uint32)
+				f['INDICES'] = np.array(indices,dtype=np.uint16)
 				ibo = glGenBuffers(1)
 				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
 				glBufferData(GL_ELEMENT_ARRAY_BUFFER, f['INDICES'], GL_STATIC_DRAW)
 				f['IBUFF'] = ibo
 
-				#glEnableVertexAttribArray(0)
-				#self.program.glEnableVertexAttribArray(0)
-				#glVertexAttribPointer(0,3, GL_FLOAT, GL_FALSE, 0,0)
 
 		self.active_object = name
 		self.debug_draw=False
-		self.update()  ## calls repaints
+		self.update()  ## calls paintGL
 
 def quads_to_tris(quads):
 	tris = []
