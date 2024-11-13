@@ -38,7 +38,13 @@ def mesh_to_json(ob):
 	indices_by_mat = faces
 	for p in ob.data.polygons:
 		if p.material_index not in indices_by_mat:
-			indices_by_mat[p.material_index] = {'num':0, 'indices':[]}
+			indices_by_mat[p.material_index] = {'num':0, 'indices':[], 'color':None}
+			if p.material_index < len(ob.data.materials):
+				r,g,b,a = ob.data.materials[p.material_index].diffuse_color
+				indices_by_mat[p.material_index]['color']=(r,g,b)
+			else:
+				r,g,b,a = ob.color
+				indices_by_mat[p.material_index]['color']=(r,g,b)
 
 		if len(p.vertices)==4:
 			x,y,z,w = p.vertices
@@ -332,8 +338,8 @@ class Viewer(QOpenGLWidget):
 		#glDrawArrays( GL_TRIANGLES, 0, len(ob['verts']) )  ## draws a triangle
 
 		for matid in ob['faces']:
-			glUniform3fv(loc, 1, np.array([1,0.1,0.3], dtype=np.float32))
 			f = ob['faces'][matid]
+			glUniform3fv(loc, 1, np.array(f['color'], dtype=np.float32))
 			ibo = f['IBUFF']
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo)
 			glDrawElements(GL_TRIANGLES, len(f['INDICES']), GL_UNSIGNED_SHORT, None)
@@ -351,7 +357,7 @@ class Viewer(QOpenGLWidget):
 			print(cmd)
 			subprocess.check_call(cmd)
 			ob = json.loads(open('/tmp/__object__.json').read())
-			print('got json:', ob)
+			#print('got json:', ob)
 
 			#if ob['camera']:  ## TODO, for now just rotate meshes on export
 			#	self.projection = ob['camera']
