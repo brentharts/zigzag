@@ -1,4 +1,6 @@
 import os, sys, json, subprocess, math
+_thisdir = os.path.split(os.path.abspath(__file__))[0]
+if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 
 def mesh_to_json(ob):
 	import bpy
@@ -40,8 +42,12 @@ def mesh_to_json(ob):
 		if p.material_index not in indices_by_mat:
 			indices_by_mat[p.material_index] = {'num':0, 'indices':[], 'color':None}
 			if p.material_index < len(ob.data.materials):
-				r,g,b,a = ob.data.materials[p.material_index].diffuse_color
+				mat = ob.data.materials[p.material_index]
+				r,g,b,a = mat.diffuse_color
 				indices_by_mat[p.material_index]['color']=(r,g,b)
+				if mat.zigzag_object_type != 'NONE':
+					indices_by_mat[p.material_index]['class'] = mat.zigzag_object_type
+
 			else:
 				r,g,b,a = ob.color
 				indices_by_mat[p.material_index]['color']=(r,g,b)
@@ -59,8 +65,10 @@ def mesh_to_json(ob):
 			raise RuntimeError('TODO polygon len verts: %s' % len(p.vertices))
 
 	for mat in ob.data.materials:
-		materials.append({'name':mat.name, 'color':list(mat.diffuse_color)})
-
+		minfo = {'name':mat.name, 'color':list(mat.diffuse_color)}
+		materials.append(minfo)
+		if mat.zigzag_object_type != 'NONE':
+			minfo['class'] = mat.zigzag_object_type
 
 	return dump
 
@@ -84,6 +92,8 @@ for arg in sys.argv:
 
 if out:
 	assert obj
+	import bpy
+	import libgenzag
 	dump = blend_to_json(obj)
 	open(out,'wb').write(
 		json.dumps(dump).encode('utf-8')
@@ -177,6 +187,7 @@ class Viewer(QOpenGLWidget):
 		self.projection = None
 		self.spin_up = 0
 		self.spin_side = 0
+		self.cam_zoom = 5
 
 	def mouseMoveEvent(self, event):
 		pos = event.pos()
@@ -185,15 +196,21 @@ class Viewer(QOpenGLWidget):
 		x -= 0.5
 		y -= 0.5
 		#print(x,y)
-		self.spin_side = x
-		self.spin_up = y
+		#print(event.buttons())
+		if event.buttons() == Qt.MouseButton.LeftButton:
+			pass
+		elif event.buttons() == Qt.MouseButton.RightButton:
+			self.cam_zoom = 5 + (y * 5)
+		else:
+			self.spin_side = x * 2
+			self.spin_up = y * 3
 		self.update()
 
 
 	def initializeGL(self):
 		print('init gl')
 		#self.initializeOpenGLFunctions()
-		glClearColor(0.5, 0.5, 0.5, 1)
+		glClearColor(0.25, 0.25, 0.25, 1)
 		glViewport(0,0,self._width,self._height)
 
 		vertShaderSrc = """
@@ -312,8 +329,8 @@ class Viewer(QOpenGLWidget):
 			P = list(self.projection)
 		else:
 			view = QMatrix4x4()
-			cx = math.sin(self.spin_side + math.radians(180) ) * 5
-			cy = math.cos(self.spin_side + math.radians(180) ) * 5
+			cx = math.sin(self.spin_side + math.radians(180) ) * self.cam_zoom
+			cy = math.cos(self.spin_side + math.radians(180) ) * self.cam_zoom
 			view.lookAt(
 				#QVector3D(0,-5,0), # camera pos
 				QVector3D(cx,cy,self.spin_up), # camera pos
@@ -413,6 +430,7 @@ class Viewer(QOpenGLWidget):
 		self.active_object = name
 		self.debug_draw=False
 		self.update()  ## calls paintGL
+		return self.buffers[name]
 
 def quads_to_tris(quads):
 	tris = []
