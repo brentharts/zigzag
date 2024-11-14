@@ -115,6 +115,43 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		## cyrillic
 		self._msyms = 'Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split()
 		self.mat_syms = {}
+		self.shared_materials = {}
+
+		self.com_timer = QTimer()
+		self.com_timer.timeout.connect(self.com_loop)
+		self.com_timer.start(2000)
+
+	def com_loop(self):
+		txt = self.editor.toPlainText()
+		updates = 0
+		for ln in txt.splitlines():
+			for name in self.mat_syms:
+				sym = self.mat_syms[name]
+				if ln.count(sym)==1:
+					#print(ln)
+					cmd = ln.split(sym)[-1]
+					if cmd.startswith('.color') and cmd.count(',')==2:
+						if '=' in cmd: clr = cmd.split('=')[-1].strip()
+						else:  clr = cmd.split('.color')[-1].strip()
+						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
+						elif clr.endswith( (']', ')', '}') ): clr=clr[:-1]
+						ok = False
+						try:
+							clr = [float(c.strip()) for c in clr.split(',')]
+							ok = True
+						except:
+							pass
+						if ok:
+							assert name in self.shared_materials
+							self.shared_materials[name]['color']=clr
+							r,g,b = clr
+							r = int(r*255)
+							g = int(g*255)
+							b = int(b*255)
+							self.shared_materials[name]['WIDGET'].setStyleSheet('background-color:rgb(%s,%s,%s)' %(r,g,b))
+							updates += 1
+		if updates:
+			self.glview.update()
 
 	def material_sym(self, name):
 		if name not in self.mat_syms:
@@ -185,9 +222,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			clear_layout(self.materials_layout)
 			for mat in info['materials']:
 				print(mat)
+				self.shared_materials[mat['name']] = mat
+
 				box = QHBoxLayout()
 				con = QWidget()
 				con.setLayout(box)
+				mat['WIDGET'] = con
 				self.materials_layout.addWidget(con)
 				box.addWidget(QLabel(mat['name']))
 
