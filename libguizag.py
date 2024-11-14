@@ -1,5 +1,5 @@
 import os, sys, subprocess, atexit, string
-
+from random import random, uniform
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 try:
@@ -121,6 +121,46 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.com_timer.timeout.connect(self.com_loop)
 		self.com_timer.start(2000)
 
+		self.active_object = None
+		self.anim_timer = QTimer()
+		self.anim_timer.timeout.connect(self.anim_loop)
+		self.anim_timer.start(30)
+
+	def anim_loop(self):
+		if not self.active_object: return
+		ob = self.active_object
+		needs_update = False
+		for matid in ob['faces']:
+			f = ob['faces'][matid]
+			if int(matid) < len(ob['materials']):
+				mat = ob['materials'][ int(matid) ]
+				if 'class' in mat and mat['class'] != 'NONE':
+					#print('animation class:', mat['class'])
+					if mat['class']=='LOWER_LIP':
+						if random() < 0.06:
+							f['TRANS'][2] = (random()-0.25)*0.1
+							needs_update = True
+					if mat['class']=='EYES':
+						if random() < 0.03:
+							ob['EYES_X'] = (random()-0.5)*0.05
+							ob['EYES_Y'] = (random()-0.5)*0.01
+							f['TRANS'][0] = ob['EYES_X']
+							f['TRANS'][2] = ob['EYES_Y']
+							needs_update = True
+					if mat['class']=='UPPER_EYELID':
+						if random() < 0.06 or needs_update:
+							f['TRANS'][0] = ob['EYES_X'] * 0.2
+							f['TRANS'][2] = ((random()-0.7) * 0.07) + (ob['EYES_Y']*0.2)
+							needs_update = True
+					if mat['class']=='LOWER_EYELID':
+						if needs_update:
+							f['TRANS'][0] = ob['EYES_X'] * 0.25
+							f['TRANS'][2] = ((random()-0.35) * 0.07) + (ob['EYES_Y']*0.4)
+
+		if needs_update:
+			self.glview.update()
+
+
 	def com_loop(self):
 		txt = self.editor.toPlainText()
 		updates = 0
@@ -219,6 +259,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		print('view_blender_object:', obname, blend)
 		if self.glview:
 			info = self.glview.view_blender_object(obname, blend)
+			info['EYES_X'] = 0
+			info['EYES_Y'] = 0
+			self.active_object = info
 			clear_layout(self.materials_layout)
 			for mat in info['materials']:
 				print(mat)
