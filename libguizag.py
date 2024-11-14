@@ -487,6 +487,14 @@ class Window(QWidget):
 		btn.clicked.connect( lambda: self.blendgen("🐱") )
 		self.tools.addWidget(btn)
 
+		btn = QPushButton("🐶")  ## dog
+		btn.clicked.connect( lambda: self.blendgen("🐶") )
+		self.tools.addWidget(btn)
+
+		btn = QPushButton("🐻")  ## bear
+		btn.clicked.connect( lambda: self.blendgen("🐻") )
+		self.tools.addWidget(btn)
+
 		self.tools.addStretch(1)
 
 		self.sub_vbox = vbox = QVBoxLayout()
