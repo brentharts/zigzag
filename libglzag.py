@@ -318,6 +318,30 @@ class Viewer(QOpenGLWidget):
 		#ob['VBUFF'].bind()
 		vbo = ob['VBUFF']
 		glBindBuffer(GL_ARRAY_BUFFER, vbo)
+		needs_upload = False
+		for matid in ob['faces']:
+			f = ob['faces'][matid]
+			#if int(matid) < len(ob['materials']):
+			#	mat = ob['materials'][ int(matid) ]
+			if tuple(f['TRANS']) != f['TRANS_PREV']:
+				f['TRANS_PREV'] = tuple(f['TRANS'])
+				needs_upload = True
+
+		if needs_upload:
+			#print('doing vert upload')
+			arr = list(ob['verts'])  ## copy verts
+			for matid in ob['faces']:
+				f = ob['faces'][matid]
+				x,y,z = f['TRANS']
+				for quad in f['indices']:
+					for vidx in quad:
+						if vidx==65000: continue
+						i = vidx * 3
+						arr[i] += x
+						arr[i+1] += y
+						arr[i+2] += z
+			vertices = np.array(arr, dtype=np.float32)
+			glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)			
 
 
 		P = [1.3737387097273113,0.0,0.0,0.0,0.0, 1.8316516129697482,0.0,0.0,0.0,0.0, -1.02020202020202,-1.0,0.0,0.0,-2.0202020202020203,0.0];
@@ -429,6 +453,8 @@ class Viewer(QOpenGLWidget):
 				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo)
 				glBufferData(GL_ELEMENT_ARRAY_BUFFER, f['INDICES'], GL_STATIC_DRAW)
 				f['IBUFF'] = ibo
+				f['TRANS'] = [0,0,0]
+				f['TRANS_PREV'] = tuple([0,0,0])
 
 
 		self.active_object = name
