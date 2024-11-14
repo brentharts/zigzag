@@ -375,7 +375,11 @@ class Viewer(QOpenGLWidget):
 
 		for matid in ob['faces']:
 			f = ob['faces'][matid]
-			glUniform3fv(loc, 1, np.array(f['color'], dtype=np.float32))
+			if int(matid) < len(ob['materials']):
+				r,g,b = ob['materials'][ int(matid) ]['color'][:3]
+				glUniform3fv(loc, 1, np.array([r,g,b], dtype=np.float32))
+			else:
+				glUniform3fv(loc, 1, np.array(f['color'], dtype=np.float32))
 			ibo = f['IBUFF']
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo)
 			glDrawElements(GL_TRIANGLES, len(f['INDICES']), GL_UNSIGNED_SHORT, None)
