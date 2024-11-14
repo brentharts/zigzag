@@ -479,10 +479,13 @@ class Window(QWidget):
 		btn.clicked.connect(self.open_code_editor)
 		self.tools.addWidget(btn)
 
-		btn = QPushButton("🐵")
+		btn = QPushButton("🐵")  ## monkey
 		btn.clicked.connect( lambda: self.blendgen("🐵") )
 		self.tools.addWidget(btn)
 
+		btn = QPushButton("🐱")  ## cat
+		btn.clicked.connect( lambda: self.blendgen("🐱") )
+		self.tools.addWidget(btn)
 
 		self.tools.addStretch(1)
 
