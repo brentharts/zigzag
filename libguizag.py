@@ -85,14 +85,41 @@ else:
 		QPixmap,
 	)
 
+def clear_layout(layout):
+	for i in reversed(range(layout.count())):
+		widget = layout.itemAt(i).widget()
+		if widget is not None: widget.setParent(None)
+
+
 class ZigZagEditor( MegasolidCodeEditor ):
 	def reset(self):
+		alt_widget = None
 		if libglzag:
-			self.glview = libglzag.Viewer()
+			self.glview = libglzag.Viewer(width=300,height=300)
+
+			layout = QVBoxLayout()
+			alt_widget = QWidget()
+			alt_widget.setLayout(layout)
+			layout.addWidget(self.glview)
+			layout.addStretch(1)
+
+			self.materials_layout = QVBoxLayout()
+			layout.addLayout(self.materials_layout)
+
 		else:
 			self.glview = None
+			self.materials_layout = None
 
-		super(ZigZagEditor,self).reset(alt_widget=self.glview)
+		super(ZigZagEditor,self).reset(alt_widget=alt_widget)
+
+		## cyrillic
+		self._msyms = 'Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split()
+		self.mat_syms = {}
+
+	def material_sym(self, name):
+		if name not in self.mat_syms:
+			self.mat_syms[name] = self._msyms.pop()
+		return self.mat_syms[name]
 
 	def blend_to_qt(self, dump):
 		layout = QVBoxLayout()
@@ -154,7 +181,43 @@ class ZigZagEditor( MegasolidCodeEditor ):
 	def view_blender_object(self, obname, blend):
 		print('view_blender_object:', obname, blend)
 		if self.glview:
-			self.glview.view_blender_object(obname, blend)
+			info = self.glview.view_blender_object(obname, blend)
+			clear_layout(self.materials_layout)
+			for mat in info['materials']:
+				print(mat)
+				box = QHBoxLayout()
+				con = QWidget()
+				con.setLayout(box)
+				self.materials_layout.addWidget(con)
+				box.addWidget(QLabel(mat['name']))
+
+				if 'class' in mat:
+					btn = QPushButton(mat['class'])
+					box.addWidget(btn)
+
+				box.addStretch(1)
+
+				msym = self.material_sym(mat['name'])
+				btn = QPushButton( msym )
+				box.addWidget(btn)
+				btn.clicked.connect(lambda a,s=msym: self.insert_material(s))
+
+				r,g,b,a = mat['color']
+				brightness = (r+g+b)/3
+				r = int(r*255)
+				g = int(g*255)
+				b = int(b*255)
+				if brightness > 0.8:
+					con.setStyleSheet('background-color:rgb(%s,%s,%s); color:black' % (r,g,b))
+				else:
+					con.setStyleSheet('background-color:rgb(%s,%s,%s)' % (r,g,b))
+
+	def insert_material(self, sym):
+		#https://doc.qt.io/qt-6/richtext-html-subset.html
+		##tt = Typewrite font (same as <code>)
+		cur = self.editor.textCursor()
+		cur.insertHtml('<tt style="background-color:red; font-size:32px">%s</tt>' % sym)
+
 
 	def load_blends(self, blends):
 		user_vars = list(string.ascii_letters)
@@ -202,10 +265,6 @@ class Window(QWidget):
 				break
 			self.bstdout.append(ln)
 
-	def clear_layout(self, layout):
-		for i in reversed(range(layout.count())):
-			widget = layout.itemAt(i).widget()
-			if widget is not None: widget.setParent(None)
 
 	def loop(self):
 		#if self.bstdout:
@@ -230,7 +289,7 @@ class Window(QWidget):
 
 	def run_blender(self):
 		if self.tests_frame: self.tests_frame.hide()
-		self.clear_layout(self.sub_vbox)
+		clear_layout(self.sub_vbox)
 		self.move(10,64)  ## not working on linux?
 		cmd = [self.blenders[-1]]
 		for arg in sys.argv:
