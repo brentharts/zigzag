@@ -116,6 +116,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self._msyms = 'Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split()
 		self.mat_syms = {}
 		self.shared_materials = {}
+		## latin: 
+		self._osyms = [chr(i) for i in range(192, 420)] #À to ƣ
+		self.ob_syms = {}
 
 		self.com_timer = QTimer()
 		self.com_timer.timeout.connect(self.com_loop)
@@ -165,16 +168,55 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		txt = self.editor.toPlainText()
 		updates = 0
 		for ln in txt.splitlines():
+			for name in self.ob_syms:
+				sym = self.ob_syms[name]
+				if ln.count(sym)==1:
+					cmd = ln.split(sym)[-1]
+					if cmd.startswith('.rotation') and cmd.count(',')==2:
+						if '=' in cmd: clr = cmd.split('=')[-1].strip()
+						else:  clr = cmd.split('.rotation')[-1].strip()
+						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
+						if clr.endswith( (']', ')', '}') ): clr=clr[:-1]
+						ok = False
+						try:
+							clr = [float(c.strip()) for c in clr.split(',')]
+							ok = True
+						except:
+							pass
+						if ok:
+							print('TODO set rotation:', clr)
+							#self.active_object['ROT'] = clr
+							#updates += 1
+
+
 			for name in self.mat_syms:
 				sym = self.mat_syms[name]
 				if ln.count(sym)==1:
 					#print(ln)
 					cmd = ln.split(sym)[-1]
-					if cmd.startswith('.color') and cmd.count(',')==2:
+
+					if cmd.startswith('.offset') and cmd.count(',')==2:
+						print(ln)
+						if '=' in cmd: clr = cmd.split('=')[-1].strip()
+						else:  clr = cmd.split('.offset')[-1].strip()
+						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
+						if clr.endswith( (']', ')', '}') ): clr=clr[:-1]
+						ok = False
+						try:
+							clr = [float(c.strip()) for c in clr.split(',')]
+							ok = True
+						except:
+							pass
+						if ok:
+							assert name in self.shared_materials
+							print('.offset=', clr)
+							self.shared_materials[name]['OFFSET']=clr
+
+					elif cmd.startswith('.color') and cmd.count(',')==2:
 						if '=' in cmd: clr = cmd.split('=')[-1].strip()
 						else:  clr = cmd.split('.color')[-1].strip()
 						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
-						elif clr.endswith( (']', ')', '}') ): clr=clr[:-1]
+						if clr.endswith( (']', ')', '}') ): clr=clr[:-1]
 						ok = False
 						try:
 							clr = [float(c.strip()) for c in clr.split(',')]
@@ -197,6 +239,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if name not in self.mat_syms:
 			self.mat_syms[name] = self._msyms.pop()
 		return self.mat_syms[name]
+	def object_sym(self, name):
+		if name not in self.ob_syms:
+			self.ob_syms[name] = self._osyms.pop()
+		return self.ob_syms[name]
 
 	def blend_to_qt(self, dump):
 		layout = QVBoxLayout()
@@ -241,10 +287,15 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				lambda x,n=name: self.toggle_blend_object(x,n, dump)
 			)
 			box.addWidget(btn)
-			pos = [str(round(v,1)) for v in dump['objects'][name]['pos']]
-			box.addWidget(QLabel(','.join(pos)))
+			#pos = [str(round(v,1)) for v in dump['objects'][name]['pos']]
+			#box.addWidget(QLabel(','.join(pos)))
 			box.addStretch(1)
 			if name in dump['meshes']:
+				osym = self.object_sym(name)
+				btn = QPushButton(osym)
+				box.addWidget(btn)
+				btn.clicked.connect(lambda a,s=osym:self.editor.textCursor().insertText(s))
+
 				#btn = QPushButton('🮶')  ## no font for this on Windows :(
 				btn = QPushButton('▶')
 				btn.setFixedWidth(32)
