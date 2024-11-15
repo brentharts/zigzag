@@ -129,6 +129,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.anim_timer.timeout.connect(self.anim_loop)
 		self.anim_timer.start(30)
 
+		for sym in self._msyms + self._osyms:
+			self.extra_syms[sym] = True
+
 	def anim_loop(self):
 		if not self.active_object: return
 		ob = self.active_object
