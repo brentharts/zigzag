@@ -17,6 +17,24 @@ if bpy:
 			("EYES", "pupil", "material is pulil of eyes"), 
 		]
 	)
+	@bpy.utils.register_class
+	class ZigZagMaterialPanel(bpy.types.Panel):
+		bl_idname = "OBJECT_PT_ZigZag_Material_Panel"
+		bl_label = "ZigZag Materials"
+		bl_space_type = "PROPERTIES"
+		bl_region_type = "WINDOW"
+		bl_context = "material"
+
+		def draw(self, context):
+			if not context.active_object: return
+			ob = context.active_object
+			for mat in ob.data.materials:
+				if not mat: continue
+				box = self.layout.box()
+				row = box.row()
+				row.prop(mat, 'diffuse_color', text=mat.name.upper())
+				row.prop(mat, 'zigzag_object_type')
+
 
 def setup_face_materials(ob, skin=[(0.4,0.8), (0.2,0.5), (0.3,0.6)]):
 	mat = bpy.data.materials.new(name='skin')
