@@ -77,6 +77,11 @@ def setup_face_materials(ob, skin=[(0.4,0.8), (0.2,0.5), (0.3,0.6)]):
 	ob.data.materials.append(mat)
 	mat.zigzag_object_type = "LOWER_EYELID"
 
+	mat = bpy.data.materials.new(name='nose')
+	mat.diffuse_color = [uniform(0.4,0.8), uniform(0.2,0.5), uniform(0.3,0.6), 1]
+	ob.data.materials.append(mat)
+
+
 def basic_face_style(ob):
 	## eyes
 	for poly in ob.data.polygons[0:64]:
@@ -182,7 +187,7 @@ def cat():
 
 	## nose
 	for i in range(146, 160):
-		ob.data.polygons[i].material_index=9
+		ob.data.polygons[i].material_index=12
 
 	return ob
 
@@ -199,7 +204,7 @@ def dog():
 	basic_face_style(ob)
 	## nose
 	for i in range(146, 160):
-		ob.data.polygons[i].material_index=6
+		ob.data.polygons[i].material_index=12
 
 	return ob
 
@@ -213,7 +218,7 @@ def bear():
 	basic_face_style(ob)
 	## nose
 	for i in range(146, 160):
-		ob.data.polygons[i].material_index=6
+		ob.data.polygons[i].material_index=12
 
 	return ob
 
