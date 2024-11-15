@@ -132,6 +132,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		for sym in self._msyms + self._osyms:
 			self.extra_syms[sym] = True
 
+		self.editor.setCursorWidth(8)
+		self.editor.zoomIn(4)
+
 	def anim_loop(self):
 		if not self.active_object: return
 		ob = self.active_object
@@ -248,6 +251,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if name not in self.ob_syms:
 			self.ob_syms[name] = self._osyms.pop()
 		return self.ob_syms[name]
+
+	def open_blend(self, url):
+		cmd = [codeeditor.BLENDER, url, '--window-geometry','640','100', '800','800', '--python-exit-code','1', '--python', os.path.join(_thisdir,'libgenzag.py')]
+		print(cmd)
+		subprocess.check_call(cmd)
+
 
 	def blend_to_qt(self, dump):
 		layout = QVBoxLayout()
