@@ -1,6 +1,7 @@
 import os, sys, json, subprocess, math
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
+from random import random, uniform
 
 def mesh_to_json(ob):
 	import bpy
@@ -18,9 +19,9 @@ def mesh_to_json(ob):
 		'faces':faces,
 		'materials':materials,
 		'matrix': mat,
-		'pos': list(ob.location),
-		'rot': list(ob.rotation_euler),
-		'scl': list(ob.scale),
+		'pos': list(ob.location),  ## not used in viewer
+		'rotation': [math.degrees(r) for r in ob.rotation_euler],
+		'scale': list(ob.scale),
 		'parent':None,
 		'camera':None,
 	}
@@ -324,9 +325,10 @@ class Viewer(QOpenGLWidget):
 			moffset = []
 			if int(matid) < len(ob['materials']):
 				mat = ob['materials'][ int(matid) ]
-				if 'OFFSET' in mat:
-					moffset = mat['OFFSET']
-					print('material offset:', moffset)
+				if 'POSITION' in mat:
+					moffset = mat['POSITION']
+				if 'SCALE' in mat:
+					moffset += mat['SCALE']
 			if tuple(f['TRANS']+moffset) != f['TRANS_PREV']:
 				f['TRANS_PREV'] = tuple(f['TRANS']+moffset)
 				needs_upload = True
@@ -337,13 +339,16 @@ class Viewer(QOpenGLWidget):
 			for matid in ob['faces']:
 				f = ob['faces'][matid]
 				x,y,z = f['TRANS']
+				sx = sy = sz = 1.0
 
 				if int(matid) < len(ob['materials']):
 					mat = ob['materials'][ int(matid) ]
-					if 'OFFSET' in mat:
-						x += mat['OFFSET'][0]
-						y += mat['OFFSET'][1]
-						z += mat['OFFSET'][2]
+					if 'POSITION' in mat:
+						x += mat['POSITION'][0]
+						y += mat['POSITION'][1]
+						z += mat['POSITION'][2]
+					if 'SCALE' in mat:
+						sx,sy,sz = mat['SCALE']
 
 				for quad in f['indices']:
 					for vidx in quad:
@@ -352,6 +357,11 @@ class Viewer(QOpenGLWidget):
 						arr[i] += x
 						arr[i+1] += y
 						arr[i+2] += z
+
+						arr[i] *= sx
+						arr[i+1] *= sy
+						arr[i+2] *= sz
+
 			vertices = np.array(arr, dtype=np.float32)
 			glBufferData(GL_ARRAY_BUFFER, vertices, GL_STATIC_DRAW)			
 
@@ -395,7 +405,20 @@ class Viewer(QOpenGLWidget):
 
 		loc = self.prog.uniformLocation("M")
 		#print('M loc:', loc)
-		M = ob['matrix']
+		#if 'POS' in ob:
+		#M = ob['matrix']
+		m = QMatrix4x4()
+		x,y,z = ob['rotation']
+		m.rotate(x, 1,0,0)  ## in degrees not radians
+		m.rotate(y, 0,1,0)
+		m.rotate(z, 0,0,1)
+
+		x,y,z = ob['scale']
+		m.scale(x,y,z)
+
+		#x,y,z = ob['pos']
+		#m.translate(x,y,z)
+		M = m.data()
 		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(M,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("T")
