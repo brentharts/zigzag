@@ -172,21 +172,23 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				sym = self.ob_syms[name]
 				if ln.count(sym)==1:
 					cmd = ln.split(sym)[-1]
-					if cmd.startswith('.rotation') and cmd.count(',')==2:
-						if '=' in cmd: clr = cmd.split('=')[-1].strip()
-						else:  clr = cmd.split('.rotation')[-1].strip()
-						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
-						if clr.endswith( (']', ')', '}') ): clr=clr[:-1]
-						ok = False
-						try:
-							clr = [float(c.strip()) for c in clr.split(',')]
-							ok = True
-						except:
-							pass
-						if ok:
-							print('TODO set rotation:', clr)
-							#self.active_object['ROT'] = clr
-							#updates += 1
+					for key in ('rotation', 'scale'):
+						if cmd.startswith('.'+key) and cmd.count(',')==2:
+							if '=' in cmd: v = cmd.split('=')[-1].strip()
+							else:  v = cmd.split('.'+key)[-1].strip()
+							if v.startswith( ('[', '(', '{') ): v=v[1:]
+							if v.endswith( (']', ')', '}') ): v=v[:-1]
+							ok = False
+							try:
+								v = [float(c.strip()) for c in v.split(',')]
+								ok = True
+							except:
+								pass
+							if ok:
+								if self.active_object:
+									self.active_object[key] = v
+									updates += 1
+									break
 
 
 			for name in self.mat_syms:
@@ -195,24 +197,24 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					#print(ln)
 					cmd = ln.split(sym)[-1]
 
-					if cmd.startswith('.offset') and cmd.count(',')==2:
-						print(ln)
-						if '=' in cmd: clr = cmd.split('=')[-1].strip()
-						else:  clr = cmd.split('.offset')[-1].strip()
-						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
-						if clr.endswith( (']', ')', '}') ): clr=clr[:-1]
-						ok = False
-						try:
-							clr = [float(c.strip()) for c in clr.split(',')]
-							ok = True
-						except:
-							pass
-						if ok:
-							assert name in self.shared_materials
-							print('.offset=', clr)
-							self.shared_materials[name]['OFFSET']=clr
+					for key in ('position', 'scale'):
+						if cmd.startswith('.'+key) and cmd.count(',')==2:
+							if '=' in cmd: v = cmd.split('=')[-1].strip()
+							else:  v = cmd.split('.'+key)[-1].strip()
+							if v.startswith( ('[', '(', '{') ): v=v[1:]
+							if v.endswith( (']', ')', '}') ): v=v[:-1]
+							ok = False
+							try:
+								v = [float(c.strip()) for c in v.split(',')]
+								ok = True
+							except:
+								pass
+							if ok:
+								self.shared_materials[name][key.upper()]=v
+								updates += 1
+								break
 
-					elif cmd.startswith('.color') and cmd.count(',')==2:
+					if cmd.startswith('.color') and cmd.count(',')==2:
 						if '=' in cmd: clr = cmd.split('=')[-1].strip()
 						else:  clr = cmd.split('.color')[-1].strip()
 						if clr.startswith( ('[', '(', '{') ): clr=clr[1:]
@@ -591,6 +593,10 @@ class Window(QWidget):
 
 		btn = QPushButton("🦍")  ## gorilla
 		btn.clicked.connect( lambda: self.blendgen("🦍") )
+		self.tools.addWidget(btn)
+
+		btn = QPushButton("👽")  ## alien
+		btn.clicked.connect( lambda: self.blendgen("👽") )
 		self.tools.addWidget(btn)
 
 		self.tools.addStretch(1)
