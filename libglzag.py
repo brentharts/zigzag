@@ -321,10 +321,14 @@ class Viewer(QOpenGLWidget):
 		needs_upload = False
 		for matid in ob['faces']:
 			f = ob['faces'][matid]
-			#if int(matid) < len(ob['materials']):
-			#	mat = ob['materials'][ int(matid) ]
-			if tuple(f['TRANS']) != f['TRANS_PREV']:
-				f['TRANS_PREV'] = tuple(f['TRANS'])
+			moffset = []
+			if int(matid) < len(ob['materials']):
+				mat = ob['materials'][ int(matid) ]
+				if 'OFFSET' in mat:
+					moffset = mat['OFFSET']
+					print('material offset:', moffset)
+			if tuple(f['TRANS']+moffset) != f['TRANS_PREV']:
+				f['TRANS_PREV'] = tuple(f['TRANS']+moffset)
 				needs_upload = True
 
 		if needs_upload:
@@ -333,6 +337,14 @@ class Viewer(QOpenGLWidget):
 			for matid in ob['faces']:
 				f = ob['faces'][matid]
 				x,y,z = f['TRANS']
+
+				if int(matid) < len(ob['materials']):
+					mat = ob['materials'][ int(matid) ]
+					if 'OFFSET' in mat:
+						x += mat['OFFSET'][0]
+						y += mat['OFFSET'][1]
+						z += mat['OFFSET'][2]
+
 				for quad in f['indices']:
 					for vidx in quad:
 						if vidx==65000: continue
