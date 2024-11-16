@@ -75,6 +75,9 @@ JS_ZAG = '''
 	js_rand(){
 		return Math.random()
 	}
+	js_eval(a){
+		return eval(cstr_by_ptr(this.wasm.instance.exports.memory.buffer,a))
+	}
 
 '''
 
