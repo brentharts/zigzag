@@ -255,6 +255,7 @@ extern fn void gl_trans_upload(int vid);
 extern fn float js_sin(float a);
 extern fn float js_cos(float a);
 extern fn float js_rand();
+extern fn int   js_eval(char*ptr);
 
 '''
 
@@ -700,6 +701,8 @@ fn void rotateY(float *m, float angle) {
 
 def get_scripts(ob):
 	scripts = []
+	if ob.c3_script:
+		scripts.append( ob.c3_script )
 	for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
 		if getattr(ob, "c3_script%s_disable" %i): continue
 		txt = getattr(ob, "c3_script" + str(i))
@@ -707,6 +710,8 @@ def get_scripts(ob):
 	return scripts
 
 def has_scripts(ob):
+	if ob.c3_script:
+		return True
 	for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
 		if getattr(ob, "c3_script%s_disable" %i): continue
 		txt = getattr(ob, "c3_script" + str(i))
@@ -1449,9 +1454,10 @@ if __name__=='__main__':
 			getattr(libtestzag, tname)()
 			build_wasm(bpy.data.worlds[0], name='c3_'+tname, preview=False)
 			sys.exit()
+		elif arg.startswith('--import='):
+			exec( open( arg.split('=')[-1] ).read() )
 
 
-
-	test_scene()
-	if '--no-wasm-test' in sys.argv: pass
-	else: build_wasm(bpy.data.worlds[0])
+	if '--test-wasm' in sys.argv:
+		test_scene()
+		build_wasm(bpy.data.worlds[0])
