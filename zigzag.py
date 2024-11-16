@@ -1265,10 +1265,13 @@ if __name__=='__main__':
 			getattr(libtestzag, tname)()
 			build_webgl(bpy.data.worlds[0], name='zig_'+tname, preview=False)
 			sys.exit()
+		elif arg.startswith('--import='):
+			exec( open( arg.split('=')[-1] ).read() )
+
 	if '--pipe' in sys.argv:
 		bpy.ops.zigzag.run()
 
-	if '--2d' in sys.argv:
+	if '--test-2d' in sys.argv:
 		if '--monkey' in sys.argv:
 			bpy.ops.object.gpencil_add(type='MONKEY')
 			ob = bpy.context.active_object
@@ -1278,7 +1281,8 @@ if __name__=='__main__':
 			test_scene()
 
 		build_wasm(bpy.data.worlds[0])
-	else:
+
+	elif '--test-3d' in sys.argv:
 		bpy.data.objects['Cube'].hide_set(True)
 		ob = libgenzag.monkey()
 		ob.rotation_euler.x = -math.pi/2
