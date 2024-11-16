@@ -85,11 +85,33 @@ else:
 		QPixmap,
 	)
 
+
+if sys.platform == 'win32':
+	C3 = os.path.join(_thisdir,'c3/c3c.exe')  ## latest unstable
+	if not os.path.isfile(C3): C3 = os.path.abspath('./c3-windows-Release/c3c.exe')
+	ZIG = os.path.join(_thisdir, 'zig-windows-x86_64-0.13.0/zig.exe')
+elif sys.platform == 'darwin':
+	C3 = os.path.abspath('./c3/c3c')
+	ZIG = os.path.join(_thisdir, 'zig-macos-aarch64-0.13.0/zig')
+else:
+	C3 = os.path.abspath('./c3/c3c')
+	ZIG = os.path.join(_thisdir, 'zig-linux-x86_64-0.13.0/zig')
+
+if not os.path.isfile(C3):
+	print("WARN: C3 compiler not installed")
+	C3 = None
+if not os.path.isfile(ZIG):
+	print("WARN: ZIG compiler not installed")
+	ZIG = None
+
 def clear_layout(layout):
 	for i in reversed(range(layout.count())):
 		widget = layout.itemAt(i).widget()
 		if widget is not None: widget.setParent(None)
 
+class ClickLabel(QLabel):
+	def mousePressEvent(self, ev):
+		self.onclicked(ev)
 
 class ZigZagEditor( MegasolidCodeEditor ):
 	LATIN = tuple([chr(i) for i in range(192, 420)])  #À to ƣ
@@ -139,6 +161,14 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.editor.setCursorWidth(8)
 		self.editor.zoomIn(4)
 
+		self.popup = pop = ClickLabel(self)
+		pop.setText("hello popup")
+		pop.setStyleSheet('background-color:black; color:green; font-size:20px')
+		pop.move(300,50)
+		#pop.show()
+		pop.onclicked = lambda evt: pop.hide()
+		self._prev_err = None
+
 	def anim_loop(self):
 		if not self.active_object: return
 		ob = self.active_object
@@ -174,11 +204,74 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.glview.update()
 
 
+	def parse_zig(self, zig):
+		if not C3: return
+
+	def parse_c3(self, c3):
+		if not C3: return
+
+		tmp = '/tmp/__tmp__.c3'
+		open(tmp,'wb').write(c3.encode('utf-8'))
+		cmd = [
+			C3, 
+			#'-E', ## lex only
+			#'-P', ## parse and output json
+			'-C', ## lex parse check
+			'compile',
+			tmp
+		]
+		print(cmd)
+		res = subprocess.run(cmd, capture_output=True, text=True)
+		#print(res)
+		if res.returncode != 0:
+			print('COMPILE ERROR!')
+			print(res.stdout)  ## this should be nothing?
+			print(res.stderr)  ## error message from c3c
+			self.parse_c3_error(res.stderr + res.stdout)
+		else:
+			self.popup.setText('🆗')
+			self.popup.adjustSize()
+
+	def parse_c3_error(self, err):
+		error_lines = []
+		error_messages = []
+		for ln in err.splitlines():
+			if ':' in ln and ln.split(':')[0].isdigit():
+				lineno = int(ln.split(':')[0])
+				error_lines.append(ln)
+			elif ln.startswith('Error:'):
+				error_messages.append(ln)
+
+		print(error_lines)
+		print(error_messages)
+		if self._prev_err != err:
+			self._prev_err = err
+			self.popup.setText(err)
+			self.popup.adjustSize()
+			self.popup.show()
+
+
 	def com_loop(self):
 		scope = {'random':random, 'uniform':uniform, 'math':math}
+		c3_script = zig_script = None  ## multi-line strings with c3 or zig code
+		c3_scripts = {}
+		zig_scripts = {}
 		txt = self.editor.toPlainText()
 		updates = 0
 		for ln in txt.splitlines():
+			if c3_script is not None:
+				if ln == "'''":
+					self.parse_c3( '\n'.join(c3_script) )
+					c3_script = None
+				else:
+					c3_script.append(ln)
+			elif zig_script is not None:
+				if ln == "'''":
+					self.parse_zig( '\n'.join(zig_script) )
+					zig_script = None
+				else:
+					zig_script.append(ln)
+
 			if ln.count('=') == 1:
 				a,b = ln.split('=')
 				a=a.strip()
@@ -197,6 +290,13 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				sym = self.ob_syms[name]
 				if ln.count(sym)==1:
 					cmd = ln.split(sym)[-1]
+					if cmd.startswith('.c3.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
+						c3_script = []
+						c3_scripts[name] = c3_script
+					elif cmd.startswith('.zig.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
+						zig_script = []
+						zig_scripts[name] = zig_script
+
 					for key in ('rotation', 'scale'):
 						if cmd.startswith('.'+key) and cmd.count(',')==2:
 							if '=' in cmd: v = cmd.split('=')[-1].strip()
