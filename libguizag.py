@@ -1,4 +1,4 @@
-import os, sys, subprocess, atexit, string
+import os, sys, subprocess, atexit, string, math
 from random import random, uniform
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
@@ -175,9 +175,24 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 
 	def com_loop(self):
+		scope = {'random':random, 'uniform':uniform, 'math':math}
 		txt = self.editor.toPlainText()
 		updates = 0
 		for ln in txt.splitlines():
+			if ln.count('=') == 1:
+				a,b = ln.split('=')
+				a=a.strip()
+				b=b.strip()
+				if b.isdigit():
+					scope[a] = int(b)
+				elif b.count('.')==1 and b.split('.')[0].isdigit() and b.split('.')[1].isdigit():
+					scope[a] = float(b)
+				elif b.startswith(('random', 'uniform', 'math')):
+					try:
+						scope[a] = eval(b, scope, scope)
+					except:
+						pass
+
 			for name in self.ob_syms:
 				sym = self.ob_syms[name]
 				if ln.count(sym)==1:
@@ -191,7 +206,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 							ok = False
 							try:
 								#v = [float(c.strip()) for c in v.split(',')]
-								v = eval('[%s]' %v)
+								v = eval('[%s]' %v, scope, scope)
 								ok = True
 							except:
 								pass
@@ -217,7 +232,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 							ok = False
 							try:
 								#v = [float(c.strip()) for c in v.split(',')]
-								v = eval('[%s]' %v)
+								v = eval('[%s]' %v, scope, scope)
 								ok = True
 							except:
 								pass
@@ -234,7 +249,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 						ok = False
 						try:
 							#clr = [float(c.strip()) for c in clr.split(',')]
-							clr = eval('[%s]' %clr)
+							clr = eval('[%s]' %clr, scope, scope)
 							ok = True
 						except:
 							pass
