@@ -5,7 +5,34 @@ try:
 except:
 	bpy=None
 
+class _wrap_c3:
+	def __init__(self, ob):
+		print('_wrap_c3 init:', ob)
+		self.__dict__['ob'] = ob
+	def __setattr__(self, name, value):
+		print('__setattr__:', name, value)
+		if name=='script':
+			txt = bpy.data.texts.new(name=name+'.c3')
+			txt.from_string(value)
+			print(txt)
+			self.ob.c3_script = txt
+
+class _wrap_zig:
+	def __init__(self, ob):
+		self.__dict__['ob'] = ob
+	def __setattr__(self, name, value):
+		if name=='script':
+			txt = bpy.data.texts.new(name=name+'.zig')
+			txt.from_string(value)
+			self.ob.zig_script = txt
+
 if bpy:
+	bpy.types.Object.c3 = lambda s: _wrap_c3(s)
+	bpy.types.Object.c3_script = bpy.props.PointerProperty(name="C3 script", type=bpy.types.Text)
+
+	bpy.types.Object.zig = lambda s: _wrap_zig(s)
+	bpy.types.Object.zig_script = bpy.props.PointerProperty(name="Zig script", type=bpy.types.Text)
+
 	bpy.types.Material.zigzag_object_type = bpy.props.EnumProperty(
 		name='type',
 		items=[
@@ -304,3 +331,7 @@ if __name__=='__main__':
 		if 'Cube' in bpy.data.objects:
 			bpy.data.objects.remove( bpy.data.objects['Cube'] )
 		bpy.ops.wm.save_as_mainfile(filepath=out)
+
+	if '--test-c3' in sys.argv:
+		assert bpy
+		bpy.data.objects['Cube'].c3().script = 'fn void foo(){}'
