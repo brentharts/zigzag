@@ -531,10 +531,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		has_c3 = has_zig = False
 		if '.zig.script' in txt:
-			txt = txt.replace('.zig().script')
+			txt = txt.replace('.zig.script','.zig().script')
 			has_zig = True
 		if '.c3.script' in txt:
-			txt = txt.replace('.c3().script')
+			txt = txt.replace('.c3.script','.c3().script')
 			has_c3 = True
 
 		if has_c3 and has_zig:
