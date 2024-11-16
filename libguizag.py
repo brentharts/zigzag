@@ -376,6 +376,68 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.on_new_blend(blend)
 			cur.insertText('\n')
 
+	def run_script(self, *args):
+		txt = self.editor.toPlainText()
+		header = [
+			'import bpy',
+		]
+		py = []
+		blends = []
+		for c in txt:
+			if c in self.BLEND_SYMS:
+				info = self.get_blend_from_symbol(c)
+				sel = info['selected']
+				blends.append(info)
+				header += [
+				'with bpy.data.libraries.load("%s") as (data_from, data_to):' % info['URL'],
+				'	data_to.objects=data_from.objects',
+				]
+				if len(sel)==0:
+					header += [
+					'for ob in data_to.objects:',
+					'	if ob is not None: bpy.data.scenes[0].collection.objects.link(ob)',
+					]
+				elif len(sel)==1:
+					header += [
+					'__blend__%s=[]' % len(blends),
+					'for ob in data_to.objects:',
+					'	if ob is not None and ob.name =="%s":' % sel[0],
+					'		bpy.data.scenes[0].collection.objects.link(ob)',
+					'		__blend__%s = ob' % len(blends),
+					]
+					py.append('(__blend__%s)' % len(blends))
+
+				else:
+					names = ['"%s"' % n for n in sel]
+					header += [
+					'__blend__%s=[]' % len(blends),
+					'for ob in data_to.objects:',
+					'	if ob is not None and ob.name in (%s):' % ','.join(names),
+					'		bpy.data.scenes[0].collection.objects.link(ob)',
+					'		__blend__%s.append(ob)' % len(blends),
+					]
+					py.append('(__blend__%s)' % len(blends))
+
+				continue
+			if c == self.OBJ_REP:
+				## TODO images
+				continue
+			py.append(c)
+		py = '\n'.join(header) + '\n' + ''.join(py)
+		print(py)
+
+		if sys.platform=='win32':
+			tmp='C:\\tmp\\zigzag_script.py'
+		else:
+			tmp='/tmp/zigzag_script.py'
+		open(tmp,'wb').write(py.encode('utf-8'))
+		cmd = [codeeditor.BLENDER]
+		#if blends:
+		#	cmd.append(blends[0]['URL'] )
+		cmd += ['--window-geometry','640','100', '800','800', '--python-exit-code','1', '--python', zigzagpy, '--', '--import='+tmp ]
+		print(cmd)
+		subprocess.check_call(cmd)
+
 
 class Window(QWidget):
 	def open_code_editor(self, *args):
