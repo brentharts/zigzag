@@ -551,6 +551,7 @@ extern fn gl_trans_upload(vid:c_int) void;
 extern fn js_rand() f32;
 extern fn js_sin(a:f32) f32;
 extern fn js_cos(a:f32) f32;
+extern fn js_eval(c:[*:0] const u8) void;
 
 
 '''
@@ -873,6 +874,9 @@ def blender_to_zig_webgl(world):
 					bpy.ops.object.mode_set(mode="OBJECT")
 					ob.modifiers[0].use_mirror_merge=False
 
+			if ob.zig_script:
+				draw.append(ob.zig_script.as_string())
+
 			a,b,c = mesh_to_zig(ob, mirror=is_symmetric)
 			data  += a
 			setup += b
@@ -889,6 +893,7 @@ def blender_to_zig_webgl(world):
 
 	main = [
 		'export fn main() void {',
+		#'''	js_eval("window.alert('hi')");''',
 		'	gl_init(800, 600);',
 		# error: binary operator `-` has whitespace on one side, but not the other.
 		#'	view_matrix[14] = view_matrix[14] -3.0;',
@@ -1287,5 +1292,5 @@ if __name__=='__main__':
 		ob = libgenzag.monkey()
 		ob.rotation_euler.x = -math.pi/2
 		bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-		#build_webgl(bpy.data.worlds[0])
+		build_webgl(bpy.data.worlds[0])
 		
