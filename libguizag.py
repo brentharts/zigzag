@@ -205,7 +205,26 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 
 	def parse_zig(self, zig):
-		if not C3: return
+		if not ZIG: return
+		tmp = '/tmp/__tmp__.zig'
+		open(tmp,'wb').write(zig.encode('utf-8'))
+		cmd = [
+			ZIG, 
+			'ast-check',
+			tmp
+		]
+		print(cmd)
+		res = subprocess.run(cmd, capture_output=True, text=True)
+		#print(res)
+		if res.returncode != 0:
+			print('COMPILE ERROR!')
+			print(res.stdout)  ## this should be nothing?
+			print(res.stderr)  ## error message from c3c
+			self.parse_c3_error(res.stderr + res.stdout)
+		else:
+			self.popup.setText('🆗')
+			self.popup.adjustSize()
+
 
 	def parse_c3(self, c3):
 		if not C3: return
@@ -509,6 +528,19 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		]
 		py = []
 		blends = []
+
+		has_c3 = has_zig = False
+		if '.zig.script' in txt:
+			txt = txt.replace('.zig().script')
+			has_zig = True
+		if '.c3.script' in txt:
+			txt = txt.replace('.c3().script')
+			has_c3 = True
+
+		if has_c3 and has_zig:
+			print('WARN: c3 and zig scripts at the same time are not yet supported')
+			return
+
 		for c in txt:
 			if c in self.BLEND_SYMS:
 				info = self.get_blend_from_symbol(c)
