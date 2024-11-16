@@ -112,6 +112,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		super(ZigZagEditor,self).reset(alt_widget=alt_widget)
 
+		self.on_syntax_highlight_post = self.__syntax_highlight_post
+
 		## cyrillic
 		self._msyms = 'Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split()
 		self.mat_syms = {}
@@ -380,6 +382,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		txt = self.editor.toPlainText()
 		header = [
 			'import bpy',
+			'if "Cube" in bpy.data.objects: bpy.data.objects.remove( bpy.data.objects["Cube"] )',
 		]
 		py = []
 		blends = []
@@ -437,6 +440,16 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		cmd += ['--window-geometry','640','100', '800','800', '--python-exit-code','1', '--python', zigzagpy, '--', '--import='+tmp ]
 		print(cmd)
 		subprocess.check_call(cmd)
+
+	def __syntax_highlight_post(self, html):
+		print('on_syntax_highlight_post')
+		print(html)
+		if "<br/>'''<br/>" in html:  ## end of tripple quote
+			html = html.replace("<br/>'''<br/>", "</u><br/>'''<br />")  ## note the extra <br /> white space
+		if "'''<br/>" in html:  ## no white space trick
+			html = html.replace("'''<br/>", "'''<br/><u style='background-color:darkblue'>")
+		print(html)
+		return html
 
 
 class Window(QWidget):
