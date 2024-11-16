@@ -10,6 +10,7 @@ except ModuleNotFoundError as err:
 	print(err)
 	libglzag = None
 zigzagpy = os.path.join(_thisdir, 'zigzag.py')
+c3zagpy = os.path.join(_thisdir, 'c3zag.py')
 
 if sys.platform=='win32':
 	UPBGE = 'upbge-0.36.1-windows-x86_64/blender.exe'
@@ -113,6 +114,20 @@ class ClickLabel(QLabel):
 	def mousePressEvent(self, ev):
 		self.onclicked(ev)
 
+C3_EXTERNS = '''
+extern fn float js_sin(float a);
+extern fn float js_cos(float a);
+extern fn float js_rand();
+extern fn int   js_eval(char*ptr);
+'''
+
+ZIG_EXTERNS = '''
+extern fn js_rand() f32;
+extern fn js_sin(a:f32) f32;
+extern fn js_cos(a:f32) f32;
+extern fn js_eval(c:[*:0] const u8) void;
+'''
+
 class ZigZagEditor( MegasolidCodeEditor ):
 	LATIN = tuple([chr(i) for i in range(192, 420)])  #À to ƣ
 	CYRILLIC = tuple('Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split())
@@ -163,11 +178,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		self.popup = pop = ClickLabel(self)
 		pop.setText("hello popup")
-		pop.setStyleSheet('background-color:black; color:green; font-size:20px')
-		pop.move(300,50)
+		pop.setStyleSheet('background-color:black; color:lightgreen; font-size:20px')
+		pop.move(400,50)
 		#pop.show()
 		pop.onclicked = lambda evt: pop.hide()
 		self._prev_err = None
+		self._prev_test = None
 
 	def anim_loop(self):
 		if not self.active_object: return
@@ -206,6 +222,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 	def parse_zig(self, zig):
 		if not ZIG: return
+		if zig == self._prev_test: return
+		self._prev_test = zig
+
 		tmp = '/tmp/__tmp__.zig'
 		open(tmp,'wb').write(zig.encode('utf-8'))
 		cmd = [
@@ -228,6 +247,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 	def parse_c3(self, c3):
 		if not C3: return
+		if c3 == self._prev_test: return
+		self._prev_test = c3
 
 		tmp = '/tmp/__tmp__.c3'
 		open(tmp,'wb').write(c3.encode('utf-8'))
@@ -280,12 +301,16 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		for ln in txt.splitlines():
 			if c3_script is not None:
 				if ln == "'''":
+					c3_script.append('}')  ## end of wrapper function __test__
+					c3_script.append(C3_EXTERNS)
 					self.parse_c3( '\n'.join(c3_script) )
 					c3_script = None
 				else:
 					c3_script.append(ln)
 			elif zig_script is not None:
 				if ln == "'''":
+					zig_script.append('}')
+					zig_script.append(ZIG_EXTERNS)
 					self.parse_zig( '\n'.join(zig_script) )
 					zig_script = None
 				else:
@@ -310,10 +335,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				if ln.count(sym)==1:
 					cmd = ln.split(sym)[-1]
 					if cmd.startswith('.c3.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
-						c3_script = []
+						c3_script = ['fn void __test__(){']
 						c3_scripts[name] = c3_script
 					elif cmd.startswith('.zig.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
-						zig_script = []
+						zig_script = ['fn __test__() void {']
 						zig_scripts[name] = zig_script
 
 					for key in ('rotation', 'scale'):
@@ -604,10 +629,11 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		else:
 			tmp='/tmp/zigzag_script.py'
 		open(tmp,'wb').write(py.encode('utf-8'))
-		cmd = [codeeditor.BLENDER]
-		#if blends:
-		#	cmd.append(blends[0]['URL'] )
-		cmd += ['--window-geometry','640','100', '800','800', '--python-exit-code','1', '--python', zigzagpy, '--', '--import='+tmp ]
+		cmd = [codeeditor.BLENDER, '--window-geometry','640','100', '800','800', '--python-exit-code','1']
+		if has_c3:
+			cmd += ['--python', c3zagpy, '--', '--import='+tmp ]
+		else:
+			cmd += ['--python', zigzagpy, '--', '--import='+tmp ]
 		print(cmd)
 		subprocess.check_call(cmd)
 
