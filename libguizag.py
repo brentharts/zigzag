@@ -92,6 +92,8 @@ def clear_layout(layout):
 
 
 class ZigZagEditor( MegasolidCodeEditor ):
+	LATIN = tuple([chr(i) for i in range(192, 420)])  #À to ƣ
+	CYRILLIC = tuple('Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split())
 	def reset(self):
 		alt_widget = None
 		if libglzag:
@@ -115,11 +117,11 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.on_syntax_highlight_post = self.__syntax_highlight_post
 
 		## cyrillic
-		self._msyms = 'Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split()
+		self._msyms = list(self.CYRILLIC)
 		self.mat_syms = {}
 		self.shared_materials = {}
 		## latin: 
-		self._osyms = [chr(i) for i in range(192, 420)] #À to ƣ
+		self._osyms = list(self.LATIN)
 		self.ob_syms = {}
 
 		self.com_timer = QTimer()
@@ -188,7 +190,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 							if v.endswith( (']', ')', '}') ): v=v[:-1]
 							ok = False
 							try:
-								v = [float(c.strip()) for c in v.split(',')]
+								#v = [float(c.strip()) for c in v.split(',')]
+								v = eval('[%s]' %v)
 								ok = True
 							except:
 								pass
@@ -213,7 +216,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 							if v.endswith( (']', ')', '}') ): v=v[:-1]
 							ok = False
 							try:
-								v = [float(c.strip()) for c in v.split(',')]
+								#v = [float(c.strip()) for c in v.split(',')]
+								v = eval('[%s]' %v)
 								ok = True
 							except:
 								pass
@@ -229,7 +233,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 						if clr.endswith( (']', ')', '}') ): clr=clr[:-1]
 						ok = False
 						try:
-							clr = [float(c.strip()) for c in clr.split(',')]
+							#clr = [float(c.strip()) for c in clr.split(',')]
+							clr = eval('[%s]' %clr)
 							ok = True
 						except:
 							pass
@@ -240,6 +245,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 							r = int(r*255)
 							g = int(g*255)
 							b = int(b*255)
+							if r > 255: r = 255
+							if g > 255: g = 255
+							if b > 255: b = 255
 							self.shared_materials[name]['WIDGET'].setStyleSheet('background-color:rgb(%s,%s,%s)' %(r,g,b))
 							updates += 1
 		if updates:
@@ -422,9 +430,24 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					py.append('(__blend__%s)' % len(blends))
 
 				continue
-			if c == self.OBJ_REP:
+			elif c == self.OBJ_REP:
 				## TODO images
 				continue
+			elif c in self.LATIN:
+				for obname in self.ob_syms:
+					if self.ob_syms[obname] == c:
+						c = obname
+						break
+				py.append('(bpy.data.objects["%s"])' % c)
+				continue
+			elif c in self.CYRILLIC:
+				for matname in self.mat_syms:
+					if self.mat_syms[matname] == c:
+						c = matname
+						break
+				py.append('(bpy.data.materials["%s"])' % c)
+				continue
+
 			py.append(c)
 		py = '\n'.join(header) + '\n' + ''.join(py)
 		print(py)
