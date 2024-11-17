@@ -105,10 +105,16 @@ void main(void) {
 
 '''
 
-DEBUG_CAMERA = '''
+DEBUG_CAMERA_Y_UP = '''
 float[] proj_matrix = {1.3737387097273113,0,0,0,0,1.8316516129697482,0,0,0,0,-1.02020202020202,-1,0,0,-2.0202020202020203,0};
 float[] view_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 '''
+
+DEBUG_CAMERA = '''
+float[] proj_matrix = {1.8106600046157837, 0.0, 0.0, 0.0, 0.0, 2.4142134189605713, 0.0, 0.0, 0.0, 0.0, -1.0202020406723022, -1.0, 0.0, 0.0, -2.0202019214630127, 0.0};
+float[] view_matrix = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -5.0, 1.0};
+'''
+
 
 WASM_TEST = DEBUG_SHADER + DEBUG_CAMERA + '''
 float[] mov_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
@@ -1345,7 +1351,8 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 				if mat.zigzag_object_type=="LOWER_LIP":
 					draw += [
 						'if(js_rand() < 0.06){',
-						'	gl_trans(%s_%s_ibuff,0, (js_rand()-0.25)*0.1 ,0);' % (name,midx),
+						#'	gl_trans(%s_%s_ibuff,0, (js_rand()-0.25)*0.1 ,0);' % (name,midx),
+						'	gl_trans(%s_%s_ibuff,0, 0, (js_rand()-0.25)*0.1);' % (name,midx),
 						'	needs_upload=true;',
 						'}',
 					]
@@ -1356,12 +1363,14 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 						'	eyes_y=(js_rand()-0.5)*0.01;',
 						'	rotateY(%s_mat, eyes_x*2);' %name,
 						#'	gl_trans(%s_%s_ibuff, (js_rand()-0.5)*0.05,(js_rand()-0.5)*0.01,0);' % (name,midx),
-						'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
+						#'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
+						'	gl_trans(%s_%s_ibuff, eyes_x,0,eyes_y);' % (name,midx),
 						'	needs_upload=true;',
 					]
 					if lower_eyelid is not None:
 						draw += [
-						'	gl_trans(%s_%s_ibuff, eyes_x*0.25,(eyes_y*0.4)+( (js_rand()-0.35) *0.07),0.025);' % (name,lower_eyelid),
+						#'	gl_trans(%s_%s_ibuff, eyes_x*0.25,(eyes_y*0.4)+( (js_rand()-0.35) *0.07),0.025);' % (name,lower_eyelid),
+						'	gl_trans(%s_%s_ibuff, eyes_x*0.25, -0.025, (eyes_y*0.4)+( (js_rand()-0.35) *0.07));' % (name,lower_eyelid),
 						]
 
 					draw.append('}')
@@ -1369,7 +1378,8 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 				elif mat.zigzag_object_type=="UPPER_EYELID":
 					draw += [
 						'if(js_rand() < 0.06 || needs_upload){',
-						'	gl_trans(%s_%s_ibuff, eyes_x*0.2, ((js_rand()-0.7)*0.07)+(eyes_y*0.2) ,0.05);' % (name,midx),
+						#'	gl_trans(%s_%s_ibuff, eyes_x*0.2, ((js_rand()-0.7)*0.07)+(eyes_y*0.2) ,0.05);' % (name,midx),
+						'	gl_trans(%s_%s_ibuff, eyes_x*0.2, -0.05, ((js_rand()-0.7)*0.07)+(eyes_y*0.2) );' % (name,midx),
 						'	needs_upload=true;',
 						'}',
 					]
@@ -1434,8 +1444,8 @@ def test_scene( test_materials=True, test_twist=False, spin_script=False ):
 		bpy.ops.mesh.sort_elements(type="MATERIAL", elements={"VERT"} )   ## smaller
 		bpy.ops.object.mode_set(mode="OBJECT")
 
-	ob.rotation_euler.x = -math.pi/2
-	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+	#ob.rotation_euler.x = -math.pi/2
+	#bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 
 	if test_twist:
 
