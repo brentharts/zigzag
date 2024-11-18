@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, math
 from random import random, uniform, choice
 try:
 	import bpy, mathutils
@@ -61,6 +61,232 @@ if bpy:
 				row = box.row()
 				row.prop(mat, 'diffuse_color', text=mat.name.upper())
 				row.prop(mat, 'zigzag_object_type')
+
+
+def connect_sockets(input, output):
+	# Swap sockets if they are not passed in the proper order
+	if input.is_output and not output.is_output:
+		input, output = output, input
+
+	if hasattr(output,'node'):
+		input_node = output.node
+	else:
+		input_node = output
+	if hasattr(input, 'node'):
+		output_node = input.node
+	else:
+		output_node = input
+
+	if input_node.id_data is not output_node.id_data:
+		print("Sockets do not belong to the same node tree")
+		return
+
+	if type(input) == type(output) == bpy.types.NodeSocketVirtual:
+		print("Cannot connect two virtual sockets together")
+		return
+
+	if output_node.type == 'GROUP_OUTPUT' and type(input) == bpy.types.NodeSocketVirtual:
+		output_node.id_data.outputs.new(type(output).__name__, output.name)
+		input = output_node.inputs[-2]
+
+	if input_node.type == 'GROUP_INPUT' and type(output) == bpy.types.NodeSocketVirtual:
+		output_node.id_data.inputs.new(type(input).__name__, input.name)
+		output = input_node.outputs[-2]
+
+	return input_node.id_data.links.new(input, output)
+
+def smaterial(name, color):
+	if name not in bpy.data.materials:
+		m = bpy.data.materials.new(name=name)
+		m.use_nodes = False
+		m.diffuse_color = color
+	return bpy.data.materials[name]
+
+def new_mesh(type='cube'):
+	getattr(bpy.ops.mesh, 'primitive_%s_add' % type)()
+	return bpy.context.active_object
+
+def make_grassy( ob, subdivisons=3, random_scale=1.0 ):
+	ob.name = 'grass'
+	mod = ob.modifiers.new(name="subsurf", type="SUBSURF")
+	mod.subdivision_type = "SIMPLE"
+	mod.levels = subdivisons
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+	for vert in ob.data.vertices:
+		x,y,z = vert.co
+		if z > 0:
+			vert.co.z += random() * random_scale
+
+	mod = ob.modifiers.new(name="build", type="BUILD")
+	mod.use_random_order = True
+	mod.frame_start = uniform(-80, -60)
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+	for px, poly in enumerate(ob.data.polygons):
+		if poly.center.z > 0.99: # and poly.normal.z > 0.5: #and random() < 0.7:
+			poly.material_index = 2
+		elif random() < 0.3:
+			poly.material_index = 1
+
+	ob.data.materials.append( smaterial('__dirt0__', [0.7,0.8,0.5, 1]))
+	ob.data.materials.append( smaterial('__dirt1__', [0.6,0.4,0.2, 1]))
+	ob.data.materials.append( smaterial('__green__', [0,0.8,0.1, 1]))
+
+	mod = ob.modifiers.new(name="subsurf", type="SUBSURF")
+	return ob
+
+def make_map(walls):
+	for info in walls:
+		ob = new_mesh('cube')
+		ob.scale = info['scale']
+		ob.location = info['location']
+		ob.name = 'wall'
+		if random() < 0.5 and ob.scale.z < 7:
+			make_grassy(ob)
+
+		if random() < 0.4:
+			x,y,z = ob.location
+			dx,dy,dz = ob.dimensions
+			for i in range(5):
+				p = make_pipe(x=x+uniform(-dx*3,dx*3), y=y+uniform(-dy*3,dy*3), z=uniform(-1,3))
+				p.scale *= uniform(1,4)
+
+test_map = [
+	{'location':[-10, 0, 0], 'scale':[1,10,1]},
+	{'location':[10, 0, 0], 'scale':[1,10,1]},
+	{'location':[-20, 0, 0], 'scale':[1,10,5]},
+	{'location':[-20, 20, 0], 'scale':[5,1,1]},
+
+	{'location':[0, -20, 0], 'scale':[10,1,1]},
+	{'location':[0, 20, 0], 'scale':[10,1,1]},
+
+	{'location':[-5, -22, 0], 'scale':[1,1,7.4]},
+
+	{'location':[-10, 40, 0], 'scale':[1,10,1]},
+	{'location':[-15, 49, 0], 'scale':[5,1,1]},
+	{'location':[-10, 30, 6], 'scale':[1,1,7]},
+]
+
+def make_pipe( parent=None, x=0,y=0,z=0, flip=False, offset_x=0, offset_y=0 ):
+	if not parent:
+		bpy.ops.object.empty_add(type='SINGLE_ARROW')
+		parent = bpy.context.active_object
+		parent.location=[x,y,z]
+		parent.name='pipe'
+
+	if '__PIPE__' in bpy.data.collections:
+		print('reuse pipe collection')
+		parent.instance_type = 'COLLECTION'
+		parent.instance_collection = bpy.data.collections['__PIPE__']
+		return parent
+
+	print('making new pipe collection')
+
+	col = bpy.data.collections.new(name='__PIPE__')
+
+	m = 0.6
+	smaterial('PIPE', [0.1*m,0.6*m,0.3*m, 1])
+	m = 1.0
+	smaterial('LIGHT_PIPE',[0.123*m, 0.7*m, 0.35*m, 1])
+	smaterial('BLACK',[0,0,0, 1])
+
+	#x,y,z = parent.location
+	x = y = z = 0.0
+	bpy.ops.mesh.primitive_cylinder_add(
+		vertices = 18,
+		radius = 0.1,
+		end_fill_type = 'NOTHING',
+		location=(x+offset_x, y-offset_y, z),
+		rotation=(0,0,0),
+		#scale=(1,1,1),
+	)
+	ob = bpy.context.active_object
+	col.objects.link(ob)
+	ob.lineart.usage = 'EXCLUDE'
+
+	ob.data.materials.append( bpy.data.materials['PIPE'] )
+	ob.data.materials.append( bpy.data.materials['LIGHT_PIPE'] )
+	#ob.location.z = 0.2
+	polys = ob.data.polygons
+	for idx in [2]:
+		polys[idx].material_index = 1
+
+	bpy.ops.mesh.primitive_cylinder_add(
+		vertices = 18,
+		radius = 0.15,
+		end_fill_type = 'NOTHING',
+	)
+	rim = bpy.context.active_object
+	col.objects.link(rim)
+	rim.lineart.usage = 'EXCLUDE'
+
+	rim.data.materials.append( bpy.data.materials['PIPE'] )
+	rim.data.materials.append( bpy.data.materials['LIGHT_PIPE'] )
+	rim.parent = ob
+	rim.scale.z = 0.05
+	rim.scale *= 0.8
+	rim.scale.z = 0.2
+	rim.location.z = 1
+
+	polys = rim.data.polygons
+	for idx in (1,2,3):
+		polys[idx].material_index = 1
+
+	mod = rim.modifiers.new(name='pasta.rim', type="SOLIDIFY")
+	mod.thickness = 0.05
+	mod.material_offset_rim = 1
+
+	bpy.ops.mesh.primitive_circle_add(
+		vertices = 18,
+		radius = 0.15,
+	)
+	bpy.ops.object.convert(target="GPENCIL")
+	o = bpy.context.active_object
+	col.objects.link(o)
+	o.parent = ob
+	o.scale *= 0.8
+	o.location.z = 1.24
+	mod = o.grease_pencil_modifiers.new(name='pasta.arr', type="GP_ARRAY")
+	mod.use_relative_offset = False
+	mod.use_constant_offset = True
+	mod.constant_offset[2] = -0.58
+
+	mod = o.grease_pencil_modifiers.new(name='pasta.thick', type="GP_THICK")
+	mod.thickness_factor = 0.3
+
+	bpy.ops.mesh.primitive_cylinder_add(
+		vertices = 18,
+		radius = 0.07,
+	)
+	shadow = bpy.context.active_object
+	col.objects.link(shadow)
+	shadow.lineart.usage = 'EXCLUDE'
+
+	shadow.data.materials.append( bpy.data.materials['BLACK'] )
+	shadow.location.z = 0.8
+	shadow.scale.z = 0.2
+	shadow.parent = ob
+
+	#ob.parent = parent
+	ob.scale.x *= 3
+	ob.scale.y *= 3
+	ob.scale *= 2
+	ob.rotation_euler.z = math.radians(220)
+
+	if flip:
+		ob.scale.z = - ob.scale.z
+		ob.location.z += 1.7
+
+	else:
+		ob.location.z -= 2
+
+	if parent.type=='EMPTY':
+		parent.instance_type = 'COLLECTION'
+		parent.instance_collection = bpy.data.collections['__PIPE__']
+
+	return parent
+
+
 
 
 def setup_face_materials(ob, skin=[(0.4,0.8), (0.2,0.5), (0.3,0.6)]):
@@ -307,6 +533,296 @@ def alien():
 	return ob
 
 
+def poop( nurb_eyes=False ):
+	bpy.ops.object.empty_add(type='SINGLE_ARROW')
+	root = bpy.context.active_object
+	root.location = [0,0,0]
+
+	rig = {
+		'EYES':[], 
+		'root':root,
+	}
+
+	lattice_mods = []
+
+
+	bmat = bpy.data.materials.new(name='black')
+	bmat.use_nodes = False
+	bmat.diffuse_color = [0,0,0, 1]
+	bmat.roughness = 0
+	bmat.zigzag_object_type = "EYES"
+
+	wmat = bpy.data.materials.new(name='white')
+	wmat.use_nodes = False
+	wmat.diffuse_color = [1,1,1, 1]
+	wmat.roughness = 0
+
+	theeth = new_mesh('cube')
+	theeth.name='theeth'
+	#theeth.location = [0,-0.7,0.7]
+	theeth.location = [0,-1.2,1]
+	#theeth.scale = [.8,.5,.3]
+	theeth.scale = [.8,.5,.12]
+	lattice_mods.append(theeth)
+	theeth.parent = root
+	theeth.data.materials.append(wmat)
+
+
+	verts = []
+	edges = []
+	faces = []
+	rad = 2.0
+	for i in range(90*4):
+		x = math.sin( math.radians(i*4) ) * rad
+		y = math.cos( math.radians(i*4) ) * rad
+		verts.append([x,y, i*0.01])
+		rad *= 0.99
+
+	#for i in range(90):
+	#	x = math.sin( math.radians(i*4*4) ) * rad
+	#	y = math.cos( math.radians(i*4*4) ) * rad
+	#	verts.append([x,y, i*0.025])
+	#	rad *= 0.9
+
+
+	for jj in range( len(verts)-1 ):
+		edges.append( [jj, jj+1] )
+
+	mesh = bpy.data.meshes.new(name='__poo__')
+	mesh.from_pydata(verts, edges, faces)
+	mesh.update()
+
+	ob = bpy.data.objects.new('__💩__', object_data=mesh)
+	bpy.context.collection.objects.link( ob )
+	bpy.context.view_layer.objects.active = ob
+	ob.select_set(True)
+	lattice_mods.append(ob)
+	ob.parent = root
+
+	skin = ob.modifiers.new(name='pasta.skin', type="SKIN")
+	#https://blender.stackexchange.com/questions/153019/how-to-set-vertex-radius-when-using-skin-modifier
+	mesh = ob.data
+	rad = 0.7
+	for vidx, vert in enumerate(mesh.vertices):
+		if vidx < len(mesh.vertices) / 2:
+			if rad > 0.001:
+				rad -= uniform(0.0001, 0.001)
+
+		radx = rad
+		rady = rad
+
+		if vidx < len(mesh.vertices) / 3:
+			radx += uniform(0,rad/2)
+			rady += uniform(0,rad/2)
+		elif vidx < len(mesh.vertices) / 1.5:
+			radx += uniform(0,rad/16)
+			rady += uniform(0,rad/16)
+			rad *= 0.995
+		else:
+			rad *= 0.98
+
+		#vert.bevel_weight = bev
+		svert = mesh.skin_vertices[0].data[vidx]
+		svert.radius = (radx,rady)
+
+	mesh.skin_vertices[0].data[0].use_root = True
+
+	bpy.ops.object.modifier_apply(modifier=skin.name)
+
+	subsurf = ob.modifiers.new(name='pasta.surf', type="SUBSURF")
+	subsurf.levels = 1
+	bpy.ops.object.modifier_apply(modifier=subsurf.name)
+
+	mod = ob.modifiers.new(name='decimate', type="DECIMATE")
+	mod.ratio = 0.06
+	#mod.ratio = 0.12
+	#mod.ratio = 0.2
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+	mat = bpy.data.materials.new(name='poo')
+	mat.use_nodes = False
+	mat.diffuse_color = [uniform(0.3, 0.5),uniform(0.2, 0.3),uniform(0.05, 0.1), 1]
+	#mat.diffuse_color = [uniform(0.3, 0.7),uniform(0.2, 0.6),uniform(0.05, 0.4), 1]
+	ob.data.materials.append(mat)
+
+
+
+	bobs = []
+
+	R = 0.5
+	r = uniform(0.3,0.5)
+	if nurb_eyes:
+		bpy.ops.surface.primitive_nurbs_surface_sphere_add()
+	else:
+		bpy.ops.mesh.primitive_ico_sphere_add()
+
+	o = bpy.context.active_object
+	o.location.x = 0.5
+	o.location.y = -0.8
+	o.location.z = 1.4
+	o.parent = ob
+	#o.scale.x = uniform(1,1.6)
+	o.scale.x = uniform(0.7,1)
+	o.scale.z = uniform(1,1.4)
+	o.scale *= r
+	o.scale.y = 0.4
+	#bobs.append(o)
+	lattice_mods.append(o)
+	rig['EYES'].append(o)
+	o.data.materials.append(wmat)
+
+	wave = o.modifiers.new(name='wave', type="WAVE")
+	wave.height = uniform(0.01, 0.05)
+	wave.use_normal = True
+	wave.speed = uniform(0.1, 0.2)
+
+
+	if  nurb_eyes:
+		bpy.ops.surface.primitive_nurbs_surface_sphere_add()
+	else:
+		bpy.ops.mesh.primitive_ico_sphere_add()
+
+	e = bpy.context.active_object
+	e.name = '👁'
+	e.location.y = uniform(-1.2, -0.8)
+	e.parent = o
+	e.data.materials.append(bmat)
+	e.scale *= 0.6
+	lattice_mods.append(e)
+
+
+	r = uniform(0.3,0.6)
+	if nurb_eyes:
+		bpy.ops.surface.primitive_nurbs_surface_sphere_add()
+	else:
+		bpy.ops.mesh.primitive_ico_sphere_add()
+
+	o = bpy.context.active_object
+	o.location.x = -0.4
+	o.location.y = -0.7
+	o.location.z = 1.5
+	o.parent = ob
+	#o.scale.x = uniform(1,1.3)
+	o.scale.x = uniform(0.7,1)
+	o.scale.z = uniform(1,1.1)
+	o.scale *= r
+	o.scale.y = 0.4
+	#bobs.append(o)
+	lattice_mods.append(o)
+	rig['EYES'].append(o)
+	o.data.materials.append(wmat)
+
+	wave = o.modifiers.new(name='wave', type="WAVE")
+	wave.height = uniform(0.1, 0.2)
+	wave.use_normal = True
+	wave.speed = uniform(0.01, 0.1)
+
+	if nurb_eyes:
+		bpy.ops.surface.primitive_nurbs_surface_sphere_add()
+	else:
+		bpy.ops.mesh.primitive_ico_sphere_add()
+
+	e = bpy.context.active_object
+	e.name = '👁'
+	e.location.y = uniform(-1.2, -0.8)
+	e.parent = o
+	e.data.materials.append(bmat)
+	e.scale *= 0.6
+	lattice_mods.append(e)
+
+
+	bpy.ops.object.add(type="LATTICE")
+	lat = bpy.context.active_object
+	lat.scale *= 3
+	lat.data.points_u = 8
+	lat.data.points_w = 8
+	lat.location = [0,-1, 0.5]
+	lat.parent = root
+	lat.hide_viewport = True
+
+	for pnt in lat.data.points:
+		x,y,z = pnt.co_deform
+		if abs(x) < 0.3 and y < 0 and abs(z) < 0.3:
+			#pnt.co_deform *= 0.0
+			pnt.co_deform.x *= 0.3
+			pnt.co_deform.z *= 0.1
+			#pnt.co_deform.y *= 0.0
+
+
+	mod = ob.modifiers.new(name='lat', type="LATTICE")
+	mod.object = lat
+
+	lmod = lat.modifiers.new(name='def', type="SIMPLE_DEFORM")
+	lmod.deform_method = "STRETCH"
+	lmod.factor = uniform(0.2, 0.5)
+	rig['STRETCH_MOUTH'] = lmod
+
+	lmod = lat.modifiers.new(name='cast', type="CAST")
+	lmod.use_y = False
+	lmod.use_z = False
+	lmod.factor = uniform(-1,1)
+	lmod.radius = 0.6
+	rig['CAST_MOUTH'] = lmod
+
+	bpy.ops.object.add(type="LATTICE")
+	lat = bpy.context.active_object
+	lat.scale *= 4
+	lat.data.points_u = 4
+	lat.data.points_v = 4
+	lat.data.points_w = 4
+	lat.location = [0,0, 0.5]
+	lat.parent = root
+	lat.hide_viewport = True
+
+
+	for o in lattice_mods:
+		mod = o.modifiers.new(name='latall', type="LATTICE")
+		mod.object = lat
+
+	lmod = lat.modifiers.new(name='def', type="SIMPLE_DEFORM")
+	lmod.deform_method = "BEND"
+	lmod.angle = math.radians(uniform(45,90))
+	rig['BEND'] = lmod
+
+	lmod = lat.modifiers.new(name='def', type="SIMPLE_DEFORM")
+	lmod.deform_method = "TWIST"
+	lmod.angle = math.radians(uniform(-90,90))
+	lmod.deform_axis = "Z"
+
+	rig['TWIST'] = lmod
+
+	lmod = lat.modifiers.new(name='def', type="SIMPLE_DEFORM")
+	lmod.deform_method = "STRETCH"
+	lmod.angle = 0
+	lmod.deform_axis = "Z"
+	rig['STRETCH'] = lmod
+
+
+	## TODO not yet allowed for lattices
+	#bpy.ops.object.modifier_apply_as_shapekey(keep_modifier=True, modifier=lmod.name)
+
+	wave = ob.modifiers.new(name='wave', type="WAVE")
+	wave.height = uniform(0.02, 0.1)
+	wave.use_normal = True
+	wave.speed = 0.1
+
+	rig['WAVE'] = wave
+	rig['mesh'] = ob
+
+	#return rig
+	#theeth.select_set(True)
+	for ob in lattice_mods:
+		ob.select_set(True)
+	bpy.context.view_layer.objects.active = lattice_mods[1]
+	bpy.ops.object.join()
+
+	for v in bpy.context.active_object.data.vertices:
+		v.co *= 0.5
+
+	return bpy.context.active_object
+
+
+
 sym_gen = {
 	'🐵' : monkey,
 	'🐱' : cat,
@@ -314,6 +830,7 @@ sym_gen = {
 	'🐻' : bear,
 	'🦍' : gorilla,
 	'👽' : alien,
+	'💩' : poop,
 }
 
 if __name__=='__main__':
@@ -335,3 +852,6 @@ if __name__=='__main__':
 	if '--test-c3' in sys.argv:
 		assert bpy
 		bpy.data.objects['Cube'].c3().script = 'fn void foo(){}'
+
+	elif '--poop' in sys.argv:
+		poop()
