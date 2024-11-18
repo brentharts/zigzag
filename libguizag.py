@@ -658,12 +658,11 @@ class Window(QWidget):
 		self.megasolid = window
 
 	def blendgen(self, sym):
-		blender = self.blenders[-1]
 		if sys.platform=='win32':
 			out = 'C:\\tmp\\%s.blend' % sym
 		else:
 			out = '/tmp/%s.blend' % sym
-		cmd = [blender, '--background', '--python-exit-code', '1', '--python', os.path.join(_thisdir,'libgenzag.py'), '--', '--generate=%s' % sym, '--out='+out]
+		cmd = [self.blenders[-1], '--background', '--python-exit-code', '1', '--python', os.path.join(_thisdir,'libgenzag.py'), '--', '--generate=%s' % sym, '--out='+out]
 		print(cmd)
 		subprocess.check_call(cmd)
 
@@ -880,6 +879,10 @@ class Window(QWidget):
 
 		btn = QPushButton("👽")  ## alien
 		btn.clicked.connect( lambda: self.blendgen("👽") )
+		self.tools.addWidget(btn)
+
+		btn = QPushButton("💩")  ## poop
+		btn.clicked.connect( lambda: self.blendgen("💩") )
 		self.tools.addWidget(btn)
 
 		self.tools.addStretch(1)
