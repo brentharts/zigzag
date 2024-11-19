@@ -102,8 +102,8 @@ def smaterial(name, color):
 		m.diffuse_color = color
 	return bpy.data.materials[name]
 
-def new_mesh(type='cube'):
-	getattr(bpy.ops.mesh, 'primitive_%s_add' % type)()
+def new_mesh(type='cube', **kw):
+	getattr(bpy.ops.mesh, 'primitive_%s_add' % type)(**kw)
 	return bpy.context.active_object
 
 def make_grassy( ob, subdivisons=3, random_scale=1.0 ):
@@ -557,16 +557,22 @@ def poop( nurb_eyes=False ):
 	wmat.diffuse_color = [1,1,1, 1]
 	wmat.roughness = 0
 
-	theeth = new_mesh('cube')
-	theeth.name='theeth'
-	#theeth.location = [0,-0.7,0.7]
-	theeth.location = [0,-1.2,1]
-	#theeth.scale = [.8,.5,.3]
-	theeth.scale = [.8,.5,.12]
-	lattice_mods.append(theeth)
-	theeth.parent = root
-	theeth.data.materials.append(wmat)
 
+	mmat = bpy.data.materials.new(name='mouth')
+	mmat.use_nodes = False
+	mmat.diffuse_color = [random()*0.2,0,0, 1]
+	mmat.roughness = 0
+
+	mouth = new_mesh('cylinder', vertices=8)
+	mouth.rotation_euler.x = math.pi / 2
+	mouth.scale = [1, 0.4, 1] #[0.5, 0.2, 0.5]
+	mouth.location = [0,-1.32,0.26]
+	mouth.data.materials.append(mmat)
+	for poly in mouth.data.polygons:
+		poly.material_index = 3
+	for v in mouth.data.vertices:
+		if v.co.y < 0:
+			v.co.y = 0
 
 	verts = []
 	edges = []
@@ -592,7 +598,7 @@ def poop( nurb_eyes=False ):
 	mesh.from_pydata(verts, edges, faces)
 	mesh.update()
 
-	ob = bpy.data.objects.new('__💩__', object_data=mesh)
+	poo = ob = bpy.data.objects.new('__💩__', object_data=mesh)
 	bpy.context.collection.objects.link( ob )
 	bpy.context.view_layer.objects.active = ob
 	ob.select_set(True)
@@ -646,6 +652,12 @@ def poop( nurb_eyes=False ):
 	ob.data.materials.append(mat)
 
 
+	mod = ob.modifiers.new(name='cut', type="BOOLEAN")
+	mod.object = mouth
+	mod.solver = "FAST"
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+	for poly in poo.data.polygons[-32:]:
+		poly.material_index = 3
 
 	bobs = []
 
@@ -809,17 +821,61 @@ def poop( nurb_eyes=False ):
 	rig['WAVE'] = wave
 	rig['mesh'] = ob
 
-	#return rig
-	#theeth.select_set(True)
 	for ob in lattice_mods:
 		ob.select_set(True)
-	bpy.context.view_layer.objects.active = lattice_mods[1]
+
+	bpy.context.view_layer.objects.active = poo
+	bpy.ops.object.join()
+
+	poo.data.materials.append(mmat)
+	bpy.data.objects.remove( mouth )
+
+
+	lipmat = bpy.data.materials.new(name='mouth')
+	lipmat.use_nodes = False
+	lipmat.diffuse_color = [random()*0.2,0,0, 1]
+	lipmat.zigzag_object_type = "LOWER_LIP"
+	poo.data.materials.append(lipmat)
+
+	for poly in poo.data.polygons:
+		if poly.material_index == 0 and poly.select:
+			if poly.normal.z > 0.8:
+				poly.material_index = 4
+			else:
+				poly.material_index = 3
+
+	bpy.ops.mesh.primitive_cube_add()
+	cu = bpy.context.active_object
+	cu.scale *= 0.1
+	cu.location = [-0.86, -1.18, 0.54]
+	mod = cu.modifiers.new(name='array',type='ARRAY')
+	mod.relative_offset_displace[0] = 1.2
+	mod.count=8
+	bpy.ops.object.modifier_apply(modifier='array')
+
+	mod = cu.modifiers.new(name='array',type='ARRAY')
+	mod.relative_offset_displace[0] = 0
+	mod.relative_offset_displace[1] = 0.5
+	mod.relative_offset_displace[2] = -1.2
+	bpy.ops.object.modifier_apply(modifier='array')
+
+	cu.data.materials.append(wmat)
+
+	bpy.context.view_layer.objects.active = poo
+	poo.select_set(True)
+	cu.select_set(True)
 	bpy.ops.object.join()
 
 	for v in bpy.context.active_object.data.vertices:
-		v.co *= 0.5
+		v.co *= 0.7
+		v.co.z -= 0.3
 
-	return bpy.context.active_object
+	mod = poo.modifiers.new(name='quads', type="TRIANGULATE")
+	mod.min_vertices = 5
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+	return poo
 
 
 
