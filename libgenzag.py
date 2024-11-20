@@ -63,38 +63,6 @@ if bpy:
 				row.prop(mat, 'zigzag_object_type')
 
 
-def connect_sockets(input, output):
-	# Swap sockets if they are not passed in the proper order
-	if input.is_output and not output.is_output:
-		input, output = output, input
-
-	if hasattr(output,'node'):
-		input_node = output.node
-	else:
-		input_node = output
-	if hasattr(input, 'node'):
-		output_node = input.node
-	else:
-		output_node = input
-
-	if input_node.id_data is not output_node.id_data:
-		print("Sockets do not belong to the same node tree")
-		return
-
-	if type(input) == type(output) == bpy.types.NodeSocketVirtual:
-		print("Cannot connect two virtual sockets together")
-		return
-
-	if output_node.type == 'GROUP_OUTPUT' and type(input) == bpy.types.NodeSocketVirtual:
-		output_node.id_data.outputs.new(type(output).__name__, output.name)
-		input = output_node.inputs[-2]
-
-	if input_node.type == 'GROUP_INPUT' and type(output) == bpy.types.NodeSocketVirtual:
-		output_node.id_data.inputs.new(type(input).__name__, input.name)
-		output = input_node.outputs[-2]
-
-	return input_node.id_data.links.new(input, output)
-
 def smaterial(name, color):
 	if name not in bpy.data.materials:
 		m = bpy.data.materials.new(name=name)
@@ -530,7 +498,161 @@ def alien():
 		ob.data.vertices[vidx].co += mathutils.Vector(mod[vidx])
 	setup_face_materials(ob)
 	basic_face_style(ob)
-	return ob
+
+	rig = {'head':ob}
+
+	ob = new_mesh('torus', major_segments=8, minor_segments=6, minor_radius=0.5)
+	rig['tongue'] = ob
+
+	mat = bpy.data.materials.new(name='mouth')
+	mat.use_nodes = False
+	mat.diffuse_color = [random()*0.2,0,0, 1]
+	mat.roughness = 0
+	ob.data.materials.append(mat)
+
+	ob.rotation_euler.x = math.pi / 2
+	ob.scale *= 0.1
+	ob.scale.z = 1
+	ob.location = [0, -0.56, -0.74]
+	for v in ob.data.vertices:
+		if v.co.z < -0.1:
+			v.co.x *= 1.4
+			v.co.y *= 1.4
+		elif v.co.z < 0.3:
+			v.co.x *= 0.4
+			v.co.y *= 0.4
+			v.co.z -= 0.3
+
+		v.co.z += 0.4
+
+		if False:
+			v.co.x += uniform(-0.5,0.5)
+			v.co.y += uniform(-0.5,0.5)
+		v.co.x *= 1.4
+
+	ob.data.vertices[24].co.x -= 0.2
+	ob.data.vertices[0].co.x += 0.2
+
+	## side of mouth
+	ob.data.vertices[25].co.x -= 0.5
+	ob.data.vertices[26].co.x -= 0.5
+
+	ob.data.vertices[1].co.x += 0.5
+	ob.data.vertices[2].co.x += 0.5
+
+	mod = ob.modifiers.new(name='smooth', type="SMOOTH")
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+	ob = new_mesh('cone', vertices=3)
+	rig['tongue-theeth'] = ob
+
+	mat = bpy.data.materials.new(name='tongue-theeth')
+	mat.use_nodes = False
+	mat.diffuse_color = [uniform(0.9,1),uniform(0.9,1),uniform(0.9,1), 1]
+	mat.roughness = 0
+	ob.data.materials.append(mat)
+
+
+	ob.scale *= 0.024
+	ob.scale.x = 0.056
+	ob.location = [0, -1.34, -0.82]
+	ob.rotation_euler.x = math.radians(90)
+	mod = ob.modifiers.new(name='array',type='ARRAY')
+	mod.relative_offset_displace[0] = 1.2
+	mod.count=8
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+	mod = ob.modifiers.new(name='bend',type="SIMPLE_DEFORM")
+	mod.deform_method = "BEND"
+	mod.angle = math.pi * 2
+	mod.deform_axis = "Z"
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+	mod = ob.modifiers.new(name='smooth', type="SMOOTH")
+	mod.factor = uniform(-0.8,0)
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+	mat = bpy.data.materials.new(name='tongue-eyes')
+	mat.use_nodes = False
+	mat.diffuse_color = [uniform(0.9,1),uniform(0.9,1),uniform(0.9,1), 1]
+	mat.roughness = 0
+
+	eyes = []
+
+	ob = new_mesh('circle', fill_type="NGON", vertices=8)
+	eyes.append(ob)
+	ob.rotation_euler.x = math.pi / 2
+	ob.scale *= 0.06
+	#ob.location = [-0.12, -1.32, -0.64]
+	#ob.location = [-0.192, -1.32, -0.69]
+
+	ob.location = [-0.192, -1.366, -0.744]
+	ob.rotation_euler.z = math.radians(-20)
+	mod = ob.modifiers.new(name='solid', type="SOLIDIFY")
+	mod.thickness = 0.75
+
+	ob.data.materials.append(mat)
+
+	ob = new_mesh('circle', fill_type="NGON", vertices=8)
+	eyes.append(ob)
+	ob.rotation_euler.x = math.pi / 2
+	ob.scale *= 0.06
+	#ob.location = [0.192, -1.32, -0.69]
+	ob.location = [0.192, -1.366, -0.744]
+	ob.rotation_euler.z = math.radians(20)
+	mod = ob.modifiers.new(name='solid', type="SOLIDIFY")
+	mod.thickness = 0.75
+
+	ob.data.materials.append(mat)
+
+
+	mat = bpy.data.materials.new(name='tongue-pupil')
+	mat.use_nodes = False
+	mat.diffuse_color = [uniform(0,0.5),uniform(0,0.3),uniform(0,0.3), 1]
+
+	ob = new_mesh('circle', fill_type="NGON", vertices=8)
+	eyes.append(ob)
+	ob.rotation_euler.x = math.pi / 2
+	ob.scale *= 0.03
+	#ob.location = [-0.12, -1.34, -0.64]
+	#ob.location = [-0.192, -1.34, -0.69]
+	ob.location = [-0.192, -1.38, -0.744]
+
+	ob.data.materials.append(mat)
+
+	ob = new_mesh('circle', fill_type="NGON", vertices=8)
+	eyes.append(ob)
+	ob.rotation_euler.x = math.pi / 2
+	ob.scale *= 0.03
+	#ob.location = [0.192, -1.34, -0.69]
+	ob.location = [0.192, -1.38, -0.744]
+
+	ob.data.materials.append(mat)
+
+
+	for ob in eyes:
+		ob.select_set(True)
+		ob.scale *= 0.6
+
+	#for ob in rig.values(): ob.select_set(True)
+	rig['tongue'].select_set(True)
+	rig['tongue-theeth'].select_set(True)
+
+	bpy.context.view_layer.objects.active = rig['tongue']
+	bpy.ops.object.join()
+
+	mod = rig['tongue'].modifiers.new(name='quads', type="TRIANGULATE")
+	mod.min_vertices = 5
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+	bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+
+	rig['tongue'].parent = rig['head']
+	#bpy.context.view_layer.objects.active = rig['head']
+	#rig['head'].select_set(True)
+	#bpy.ops.object.join()
+
+	return rig['head']
 
 
 def poop( nurb_eyes=False ):
@@ -905,9 +1027,16 @@ if __name__=='__main__':
 			bpy.data.objects.remove( bpy.data.objects['Cube'] )
 		bpy.ops.wm.save_as_mainfile(filepath=out)
 
-	if '--test-c3' in sys.argv:
+	elif '--test-c3' in sys.argv:
 		assert bpy
 		bpy.data.objects['Cube'].c3().script = 'fn void foo(){}'
 
 	elif '--poop' in sys.argv:
+		if 'Cube' in bpy.data.objects:
+			bpy.data.objects.remove( bpy.data.objects['Cube'] )
 		poop()
+
+	elif '--alien' in sys.argv:
+		if 'Cube' in bpy.data.objects:
+			bpy.data.objects.remove( bpy.data.objects['Cube'] )
+		alien()
