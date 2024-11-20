@@ -487,6 +487,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			box = QHBoxLayout()
 			layout.addLayout(box)
 			btn = QPushButton(name)
+			btn.setStyleSheet('font-size:10px')
+			btn.setFixedWidth(50)
 			btn.setCheckable(True)
 			if name in dump['selected']:
 				btn.setChecked(True)
@@ -501,6 +503,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			if name in dump['meshes']:
 				osym = self.object_sym(name, url)
 				btn = QPushButton(osym)
+				btn.setFixedWidth(32)
 				box.addWidget(btn)
 				btn.clicked.connect(lambda a,s=osym:self.editor.textCursor().insertText(s))
 
@@ -522,6 +525,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			info['EYES_Y'] = 0
 			self.active_object = info
 			clear_layout(self.materials_layout)
+			row = []
 			for mat in info['materials']:
 				print(mat)
 				self.shared_materials[mat['name']] = mat
@@ -530,17 +534,23 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				con = QWidget()
 				con.setLayout(box)
 				mat['WIDGET'] = con
-				self.materials_layout.addWidget(con)
-				box.addWidget(QLabel(mat['name']))
+				#self.materials_layout.addWidget(con)
+				row.append(con)
+
+				lab = QLabel(mat['name'])
+				lab.setStyleSheet('font-size:10px')
+				box.addWidget(lab)
 
 				if 'class' in mat:
 					btn = QPushButton(mat['class'])
+					btn.setFixedWidth(32)
 					box.addWidget(btn)
 
-				box.addStretch(1)
+				#box.addStretch(1)
 
 				msym = self.material_sym(mat['name'], blend)
 				btn = QPushButton( msym )
+				btn.setFixedWidth(32)
 				box.addWidget(btn)
 				btn.clicked.connect(lambda a,s=msym: self.insert_material(s))
 
@@ -553,6 +563,20 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					con.setStyleSheet('background-color:rgb(%s,%s,%s); color:black' % (r,g,b))
 				else:
 					con.setStyleSheet('background-color:rgb(%s,%s,%s)' % (r,g,b))
+
+				if len(row) >= 2:
+					bx = QHBoxLayout()
+					for wid in row: bx.addWidget(wid)
+					self.materials_layout.addLayout(bx)
+					row = []
+
+			if len(row):
+				bx = QHBoxLayout()
+				for wid in row: bx.addWidget(wid)
+				self.materials_layout.addLayout(bx)
+				row = []
+
+
 
 	def insert_material(self, sym):
 		#https://doc.qt.io/qt-6/richtext-html-subset.html
@@ -776,32 +800,51 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				ln = '%s.rotation = [X,Y,Z]' % sym
 			o.append(ln)
 		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
 
 		box = self.ob_popup_layout
 		box.addWidget(QLabel('rotation='))
 
+		vec = [0,0,0]
+
+		bx = QVBoxLayout()
+		box.addLayout(bx)
 		sl = QSlider()
-		#print(dir(sl))
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
-		#sl.setSliderPosition(0)
-		#sl.setSizeIncrement(1)
-		sl.valueChanged.connect(lambda v: print(v))
-		box.addWidget(sl)
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-180)
+		sl.setMaximum(180)
+		sl.valueChanged.connect(lambda v: self.on_sym_rotate(sym, 0, v, vec))
+		bx.addWidget(sl)
 
 		sl = QSlider()
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
-		box.addWidget(sl)
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-180)
+		sl.setMaximum(180)
+		sl.valueChanged.connect(lambda v: self.on_sym_rotate(sym, 1, v, vec))
+		bx.addWidget(sl)
 
 		sl = QSlider()
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
-		box.addWidget(sl)
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-180)
+		sl.setMaximum(180)
+		sl.valueChanged.connect(lambda v: self.on_sym_rotate(sym, 2, v, vec))
+		bx.addWidget(sl)
 
 		self.ob_popup.show()
 
-
+	def on_sym_rotate(self, sym, axis, value, vec):
+		vec[axis] = value
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.rotation = %s' % (sym, vec)
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+		if self.active_object:
+			self.active_object['rotation'] = vec
+		if self.glview:
+			self.glview.update()
 
 class Window(QWidget):
 	def open_code_editor(self, *args):
@@ -839,7 +882,7 @@ class Window(QWidget):
 			self.bstdout.append(ln)
 
 
-	def loop(self):
+	def blender_loop(self):
 		#if self.bstdout:
 		#	if self.sub_vbox.count() > 64:
 		#		self.clear_layout(self.sub_vbox)
@@ -992,7 +1035,7 @@ class Window(QWidget):
 
 		self.bstdout = []
 		self.timer = QTimer()
-		self.timer.timeout.connect(self.loop)
+		self.timer.timeout.connect(self.blender_loop)
 		self.timer.start(100)
 		self.proc = None
 		self.blenders = []
