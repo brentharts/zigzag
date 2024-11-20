@@ -27,11 +27,14 @@ class _wrap_zig:
 			self.ob.zig_script = txt
 
 if bpy:
+	bpy.types.World.c3_script = bpy.props.PointerProperty(name="C3 global script", type=bpy.types.Text)
+	bpy.types.World.zig_script = bpy.props.PointerProperty(name="Zig global script", type=bpy.types.Text)
+
 	bpy.types.Object.c3 = lambda s: _wrap_c3(s)
-	bpy.types.Object.c3_script = bpy.props.PointerProperty(name="C3 script", type=bpy.types.Text)
+	bpy.types.Object.c3_script = bpy.props.PointerProperty(name="C3 object script", type=bpy.types.Text)
 
 	bpy.types.Object.zig = lambda s: _wrap_zig(s)
-	bpy.types.Object.zig_script = bpy.props.PointerProperty(name="Zig script", type=bpy.types.Text)
+	bpy.types.Object.zig_script = bpy.props.PointerProperty(name="Zig object script", type=bpy.types.Text)
 
 	bpy.types.Material.zigzag_object_type = bpy.props.EnumProperty(
 		name='type',
