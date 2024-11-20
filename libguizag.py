@@ -200,6 +200,16 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		wid.setLayout(layout)
 		layout.addWidget(QLabel('hello object popup'))
 
+	def clear_object_popup(self):
+		clear_layout(self.ob_popup_layout)
+		#self.ob_popup.removeLayout(self.ob_popup_layout)
+
+		#self.ob_popup = wid = ObjectPopup(self)
+		#wid.resize(400, 64)
+		#wid.setStyleSheet('background-color:gray; color: black')
+		#self.ob_popup_layout = QHBoxLayout()
+		#self.ob_popup.setLayout(self.ob_popup_layout)
+		return self.ob_popup_layout
 
 	def anim_loop(self):
 		if not self.active_object: return
@@ -397,7 +407,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 							except:
 								pass
 							if ok:
-								self.shared_materials[name][key.upper()]=v
+								if key.upper() in self.shared_materials[name]:
+									self.shared_materials[name][key.upper()][0] = v[0]
+									self.shared_materials[name][key.upper()][1] = v[1]
+									self.shared_materials[name][key.upper()][2] = v[2]
+								else:
+									self.shared_materials[name][key.upper()]=v
 								updates += 1
 								break
 
@@ -530,7 +545,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				print(mat)
 				self.shared_materials[mat['name']] = mat
 
-				box = QHBoxLayout()
+				box = QVBoxLayout()
 				con = QWidget()
 				con.setLayout(box)
 				mat['WIDGET'] = con
@@ -543,7 +558,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 				if 'class' in mat:
 					btn = QPushButton(mat['class'])
-					btn.setFixedWidth(32)
+					btn.setFixedHeight(16)
+					btn.setFixedWidth(60)
+					btn.setStyleSheet('font-size:8px')
 					box.addWidget(btn)
 
 				#box.addStretch(1)
@@ -590,7 +607,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		user_vars.reverse()
 		cur = self.editor.textCursor()
 		for blend in blends:
-			cur.insertText('%s = ' % user_vars.pop())
+			#cur.insertText('%s = ' % user_vars.pop())
 			self.on_new_blend(blend)
 			cur.insertText('\n')
 
@@ -599,6 +616,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		header = [
 			'import bpy',
 			'if "Cube" in bpy.data.objects: bpy.data.objects.remove( bpy.data.objects["Cube"] )',
+			BLEND_WRAP_CLASS,
 		]
 		py = []
 		blends = []
@@ -623,32 +641,28 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				header += [
 				'with bpy.data.libraries.load("%s") as (data_from, data_to):' % info['URL'],
 				'	data_to.objects=data_from.objects',
+
+				'__blend__%s=BlendWrap()' % len(blends),
 				]
 				if len(sel)==0:
 					header += [
 					'for ob in data_to.objects:',
-					'	if ob is not None: bpy.data.scenes[0].collection.objects.link(ob)',
+					'	if ob is not None: __blend__%s.add(ob)' % len(blends),
 					]
 				elif len(sel)==1:
 					header += [
-					'__blend__%s=[]' % len(blends),
 					'for ob in data_to.objects:',
 					'	if ob is not None and ob.name =="%s":' % sel[0],
-					'		bpy.data.scenes[0].collection.objects.link(ob)',
-					'		__blend__%s = ob' % len(blends),
+					'		__blend__%s.add(ob)' % len(blends),
 					]
-					py.append('(__blend__%s)' % len(blends))
-
 				else:
 					names = ['"%s"' % n for n in sel]
 					header += [
-					'__blend__%s=[]' % len(blends),
 					'for ob in data_to.objects:',
 					'	if ob is not None and ob.name in (%s):' % ','.join(names),
-					'		bpy.data.scenes[0].collection.objects.link(ob)',
-					'		__blend__%s.append(ob)' % len(blends),
+					'		__blend__%s.add(ob)' % len(blends),
 					]
-					py.append('(__blend__%s)' % len(blends))
+				py.append('(__blend__%s)' % len(blends))
 
 				continue
 			elif c == self.OBJ_REP:
@@ -738,6 +752,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			url = info['URL']
 			clear_layout(self.images_layout)
 			self.images_layout.addWidget(self.blend_to_qt(info))
+			self.blend_popup(url, info, evt)
 
 		elif url in self.on_sym_clicked:
 			self.on_sym_clicked[url](url)
@@ -749,6 +764,14 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					#self.view_blender_object(obname, blend)
 					self.object_popup(obname, blend, url, evt)
 					break
+		elif url in self.CYRILLIC:
+			for blend in self.mat_syms_blends:
+				if url in self.mat_syms_blends[blend]:
+					matname = self.mat_syms_blends[blend][url]
+					print('material name:', matname)
+					#print(self.shared_materials[matname])
+					self.material_popup(matname, blend, url, evt)
+					break
 
 		elif url in self.qimages:
 			qlab = QLabel()
@@ -757,16 +780,252 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.images_layout.addWidget(qlab)
 			qlab.show()
 
+	def blend_popup(self, blend, info, evt):
+		box = self.ob_popup_layout
+		clear_layout(box)
+		box.addWidget(QLabel(blend))
+
+		for o in self.blends:
+			if o['URL']==blend:
+				sym = o['SYMBOL']
+				break
+		btn = QPushButton('🖹')
+		btn.setToolTip("attach script to world")
+		btn.setFixedWidth(32)
+		btn.clicked.connect(lambda e,b=btn: self.helper_script(b,sym))
+		box.addWidget(btn)
+
+		pnt = evt.globalPosition().toPoint()
+		x = pnt.x()
+		y = pnt.y()
+		self.ob_popup.move(x+20,y+20)
+		self.ob_popup.show()
+
+	def material_popup(self, matname, blend, sym, evt):
+		info = self.shared_materials[matname]
+		#box = self.ob_popup_layout
+		#clear_layout(box)
+		box = self.clear_object_popup()
+		box.addWidget(QLabel('%s: %s' %(sym, matname)))
+
+		btn = QPushButton('⟴')
+		btn.setFixedWidth(32)
+		btn.clicked.connect( lambda e,b=btn: self.helper_material_position(b,sym,info) )
+		box.addWidget(btn)
+
+		btn = QPushButton('⤡')
+		btn.setFixedWidth(32)
+		btn.clicked.connect( lambda e,b=btn: self.helper_material_scale(b,sym,info) )
+		box.addWidget(btn)
+
+		btn = QPushButton('🎨')
+		btn.setFixedWidth(32)
+		btn.clicked.connect( lambda e,b=btn: self.helper_color(b,sym,info) )
+		box.addWidget(btn)
+
+		pnt = evt.globalPosition().toPoint()
+		x = pnt.x()
+		y = pnt.y()
+		self.ob_popup.move(x+20,y+20)
+		self.ob_popup.show()
+
+	def helper_material_scale(self, button, sym, info):
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.scale = [X,Y,Z]' % sym
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+
+		#box = self.ob_popup_layout
+		#clear_layout(box)
+		box = self.clear_object_popup()
+		box.addWidget(QLabel('%s.position=' % sym))
+
+		if 'SCALE' not in info:
+			info['SCALE'] = [1,1,1]
+		vec = info['SCALE']
+		bx = QVBoxLayout()
+		con = QWidget()
+		con.setLayout(bx)
+		box.addWidget(con)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_scl(sym, 0, v, vec))
+		bx.addWidget(sl)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_scl(sym, 1, v, vec))
+		bx.addWidget(sl)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_scl(sym, 2, v, vec))
+		bx.addWidget(sl)
+
+		self.ob_popup.show()
+
+	def on_sym_scl(self, sym, axis, value, vec):
+		vec[axis] = value / 50
+		for i in range(3):
+			vec[i] = round(vec[i],2)
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.scale = %s' % (sym, vec)
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+		if self.glview:
+			self.glview.update()
+
+
+	def helper_material_position(self, button, sym, info):
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.position = [X,Y,Z]' % sym
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+
+		#box = self.ob_popup_layout
+		#clear_layout(box)
+		box = self.clear_object_popup()
+		box.addWidget(QLabel('%s.position=' % sym))
+
+		if 'POSITION' not in info:
+			info['POSITION'] = [0,0,0]
+		vec = info['POSITION']
+		bx = QVBoxLayout()
+		con = QWidget()
+		con.setLayout(bx)
+		#box.addLayout(bx)
+		box.addWidget(con)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_pos(sym, 0, v, vec))
+		bx.addWidget(sl)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_pos(sym, 1, v, vec))
+		bx.addWidget(sl)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_pos(sym, 2, v, vec))
+		bx.addWidget(sl)
+
+		self.ob_popup.show()
+
+	def on_sym_pos(self, sym, axis, value, vec):
+		vec[axis] = value / 100
+		for i in range(3):
+			vec[i] = round(vec[i],2)
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.position = %s' % (sym, vec)
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+		if self.glview:
+			self.glview.update()
+
+	def helper_color(self, button, sym, info):
+
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.color = [RED,GREEN,BLUE]' % sym
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+
+		#box = self.ob_popup_layout
+		#clear_layout(box)
+		box = self.clear_object_popup()
+		box.addWidget(QLabel('%s.color=' % sym))
+
+		vec = info['color']
+		bx = QVBoxLayout()
+		con = QWidget()
+		con.setLayout(bx)
+		box.addWidget(con)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(0)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_color(sym, 0, v, vec, info))
+		bx.addWidget(sl)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(0)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_color(sym, 1, v, vec, info))
+		bx.addWidget(sl)
+
+		sl = QSlider()
+		sl.setOrientation(Qt.Orientation.Horizontal)
+		sl.setMinimum(0)
+		sl.setMaximum(100)
+		sl.valueChanged.connect(lambda v: self.on_sym_color(sym, 2, v, vec, info))
+		bx.addWidget(sl)
+
+		self.ob_popup.show()
+
+
+	def on_sym_color(self, sym, axis, value, vec, info):
+		vec[axis] = value / 100
+		for i in range(3):
+			vec[i] = round(vec[i],2)
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.color = %s' % (sym, vec[:3])
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+		if self.glview:
+			self.glview.update()
+
+		r,g,b,a = vec
+		r = int(r*255)
+		g = int(g*255)
+		b = int(b*255)
+		if r > 255: r = 255
+		if g > 255: g = 255
+		if b > 255: b = 255
+		info['WIDGET'].setStyleSheet('background-color:rgb(%s,%s,%s)' %(r,g,b))
+
+
 	def object_popup(self, obname, blend, sym, evt):
 		box = self.ob_popup_layout
 		clear_layout(box)
 
-		#btn = QPushButton('⮾')
-		#btn.setFixedWidth(32)
-		#btn.clicked.connect(lambda e: self.ob_popup.hide())
-		#box.addWidget(btn)
 
 		btn = QPushButton('▶')
+		btn.setToolTip("view object")
+
 		btn.setFixedWidth(32)
 		box.addWidget(btn)
 		btn.clicked.connect(
@@ -775,10 +1034,15 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		box.addWidget(QLabel('%s: %s' %(sym, obname)))
 
-		#box.addStretch(1)
+		btn = QPushButton('🖹')
+		btn.setToolTip("attach script to object")
+		btn.setFixedWidth(32)
+		btn.clicked.connect(lambda e,b=btn: self.helper_script(b,sym))
+		box.addWidget(btn)
 
 
 		btn = QPushButton('⟲')
+		btn.setToolTip("rotate object")
 		btn.setFixedWidth(32)
 		btn.clicked.connect( lambda e,b=btn: self.helper_rotate(b,sym) )
 		box.addWidget(btn)
@@ -790,10 +1054,52 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.ob_popup.move(x+20,y+20)
 		self.ob_popup.show()
 
+	def helper_script(self, button, sym):
+		box = self.ob_popup_layout
+		clear_layout(box)
+		box.addWidget(QLabel('%s: select language' % sym))
+
+		btn = QPushButton('C3')
+		btn.clicked.connect(lambda e:self.helper_c3(sym) )
+		box.addWidget(btn)
+		btn = QPushButton('ZIG')
+		btn.clicked.connect(lambda e:self.helper_zig(sym) )
+		box.addWidget(btn)
+
+		self.ob_popup.show()
+
+	def helper_c3(self, sym):
+		self.ob_popup.hide()
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = "%s.c3.script = '''" % sym
+				o.append(ln)
+				o.append('')
+				o.append("'''")
+			else:
+				o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+
+	def helper_zig(self, sym):
+		self.ob_popup.hide()
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = "%s.zig.script = '''" % sym
+				o.append(ln)
+				o.append('')
+				o.append("'''")
+			else:
+				o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+
 	def helper_rotate(self, button, sym):
-		button.hide()
-		#cur = self.editor.textCursor()
-		#cur.insertText('.rotation=[0.00, 0.00, 0.00]')
+		box = self.ob_popup_layout
+		clear_layout(box)
+
 		o = []
 		for ln in self.editor.toPlainText().splitlines():
 			if ln.startswith(sym):
@@ -803,12 +1109,15 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.do_syntax_hl()
 
 		box = self.ob_popup_layout
-		box.addWidget(QLabel('rotation='))
+		box.addWidget(QLabel('%s.rotation=' % sym))
 
 		vec = [0,0,0]
 
 		bx = QVBoxLayout()
-		box.addLayout(bx)
+		con = QWidget()
+		con.setLayout(bx)
+		box.addWidget(con)
+
 		sl = QSlider()
 		sl.setOrientation(Qt.Orientation.Horizontal)
 		sl.setMinimum(-180)
@@ -846,10 +1155,46 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if self.glview:
 			self.glview.update()
 
+BLEND_WRAP_CLASS = '''
+
+class BlendWrap:
+	def __init__(self):
+		self.objects = []
+
+	def c3(self):
+		class _wrap_c3:
+			def __init__(self, ob):
+				print('_wrap_c3 init:', ob)
+				self.__dict__['ob'] = ob
+			def __setattr__(self, name, value):
+				print('__setattr__:', name, value)
+				if name=='script':
+					txt = bpy.data.texts.new(name=name+'.c3')
+					txt.from_string(value)
+					print(txt)
+					self.ob.c3_script = txt
+		return _wrap_c3(bpy.data.worlds[0])
+
+	def zig(self):
+		class _wrap_zig:
+			def __init__(self, ob):
+				self.__dict__['ob'] = ob
+			def __setattr__(self, name, value):
+				if name=='script':
+					txt = bpy.data.texts.new(name=name+'.zig')
+					txt.from_string(value)
+					self.ob.zig_script = txt
+		return _wrap_zig(bpy.data.worlds[0])
+
+	def add(self, ob):
+		bpy.data.scenes[0].collection.objects.link(ob)
+		self.objects.append(ob)
+
+'''
+
+
 class Window(QWidget):
 	def open_code_editor(self, *args):
-		#window = codeeditor.MegasolidCodeEditor()
-		#window.reset(alt_widget=QLabel('hello world'))
 		window = ZigZagEditor()
 		window.reset()
 		window.show()
