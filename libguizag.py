@@ -65,7 +65,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 		]
 		subprocess.check_call(cmd)
 
-	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
+	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider
 	from PySide6.QtCore import QTimer, Qt
 	from PySide6.QtGui import (
 		QFont,
@@ -75,7 +75,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 	)
 
 else:
-	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame
+	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider
 	from PyQt6.QtCore import QTimer, Qt
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -113,6 +113,10 @@ def clear_layout(layout):
 class ClickLabel(QLabel):
 	def mousePressEvent(self, ev):
 		self.onclicked(ev)
+class ObjectPopup(QWidget):
+	def mousePressEvent(self, ev):
+		self.hide()
+
 
 C3_EXTERNS = '''
 extern fn float js_sin(float a);
@@ -161,6 +165,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self._osyms = list(self.LATIN)
 		self.ob_syms = {}
 
+		self.ob_syms_blends = {}
+		self.mat_syms_blends = {}
+
 		self.com_timer = QTimer()
 		self.com_timer.timeout.connect(self.com_loop)
 		self.com_timer.start(2000)
@@ -184,6 +191,15 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		pop.onclicked = lambda evt: pop.hide()
 		self._prev_err = None
 		self._prev_test = None
+
+		self.ob_popup = wid = ObjectPopup(self)
+		wid.move(200,200)
+		wid.resize(400, 64)
+		wid.setStyleSheet('background-color:gray; color: black')
+		self.ob_popup_layout = layout = QHBoxLayout()
+		wid.setLayout(layout)
+		layout.addWidget(QLabel('hello object popup'))
+
 
 	def anim_loop(self):
 		if not self.active_object: return
@@ -412,13 +428,22 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if updates:
 			self.glview.update()
 
-	def material_sym(self, name):
+	def material_sym(self, name, blend=None):
 		if name not in self.mat_syms:
-			self.mat_syms[name] = self._msyms.pop()
+			sym = self._msyms.pop()
+			self.mat_syms[name] = sym
+			if blend not in self.mat_syms_blends:
+				self.mat_syms_blends[blend] = {}
+			self.mat_syms_blends[blend][sym]=name
 		return self.mat_syms[name]
-	def object_sym(self, name):
+
+	def object_sym(self, name, blend=None):
 		if name not in self.ob_syms:
-			self.ob_syms[name] = self._osyms.pop()
+			sym = self._osyms.pop()
+			self.ob_syms[name] = sym
+			if blend not in self.ob_syms_blends:
+				self.ob_syms_blends[blend] = {}
+			self.ob_syms_blends[blend][sym]=name
 		return self.ob_syms[name]
 
 	def open_blend(self, url):
@@ -474,7 +499,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			#box.addWidget(QLabel(','.join(pos)))
 			box.addStretch(1)
 			if name in dump['meshes']:
-				osym = self.object_sym(name)
+				osym = self.object_sym(name, url)
 				btn = QPushButton(osym)
 				box.addWidget(btn)
 				btn.clicked.connect(lambda a,s=osym:self.editor.textCursor().insertText(s))
@@ -514,7 +539,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 				box.addStretch(1)
 
-				msym = self.material_sym(mat['name'])
+				msym = self.material_sym(mat['name'], blend)
 				btn = QPushButton( msym )
 				box.addWidget(btn)
 				btn.clicked.connect(lambda a,s=msym: self.insert_material(s))
@@ -646,6 +671,136 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			html = html.replace("'''<br/>", "'''<br/><u style='background-color:darkblue'>")
 		print(html)
 		return html
+
+	def on_mouse_over_anchor(self, event, url, sym):
+		if sym==self.OBJ_TABLE:
+			assert url.isdigit()
+			tab = self.tables[int(url)]
+			arr = self.table_to_code(tab)
+			print(arr)
+			QToolTip.showText(event.globalPosition().toPoint(), arr)
+		elif sym in self.BLEND_SYMS:
+			info = self.blends[ int(url.split(':')[-1]) ]
+			tip = info['URL'] + '\nselected:\n'
+			if len(info['selected']):
+				for name in info['selected']:
+					tip += '\t'+name + '\n'
+			else:
+				tip = ' (no objects selected)'
+			QToolTip.showText(event.globalPosition().toPoint(), tip)
+		elif sym in self.LATIN:
+			for name in self.ob_syms:
+				if self.ob_syms[name] == sym:
+					tip = 'Object: %s' % name
+					QToolTip.showText(event.globalPosition().toPoint(), tip)
+		elif sym in self.CYRILLIC:
+			for name in self.mat_syms:
+				if self.mat_syms[name] == sym:
+					tip = 'Material: %s' % name
+					QToolTip.showText(event.globalPosition().toPoint(), tip)
+
+
+	def on_link_clicked(self, url, evt):
+		print('clicked:', url)
+		if url.isdigit():
+			index = int(url)
+			print('clicked on table:', index)
+			tab = self.table_to_qt(self.tables[index])
+			clear_layout(self.images_layout)
+			self.images_layout.addWidget(tab)
+			tab.show()
+		elif url.startswith("BLENDER:"):
+			info = self.blends[ int(url.split(':')[-1] ) ]
+			url = info['URL']
+			clear_layout(self.images_layout)
+			self.images_layout.addWidget(self.blend_to_qt(info))
+
+		elif url in self.on_sym_clicked:
+			self.on_sym_clicked[url](url)
+
+		elif url in self.LATIN:
+			for blend in self.ob_syms_blends:
+				if url in self.ob_syms_blends[blend]:
+					obname = self.ob_syms_blends[blend][url]
+					#self.view_blender_object(obname, blend)
+					self.object_popup(obname, blend, url, evt)
+					break
+
+		elif url in self.qimages:
+			qlab = QLabel()
+			qlab.setPixmap(self.qimages[url])
+			clear_layout(self.images_layout)
+			self.images_layout.addWidget(qlab)
+			qlab.show()
+
+	def object_popup(self, obname, blend, sym, evt):
+		box = self.ob_popup_layout
+		clear_layout(box)
+
+		#btn = QPushButton('⮾')
+		#btn.setFixedWidth(32)
+		#btn.clicked.connect(lambda e: self.ob_popup.hide())
+		#box.addWidget(btn)
+
+		btn = QPushButton('▶')
+		btn.setFixedWidth(32)
+		box.addWidget(btn)
+		btn.clicked.connect(
+			lambda e,n=obname: self.view_blender_object(n, blend)
+		)
+
+		box.addWidget(QLabel('%s: %s' %(sym, obname)))
+
+		#box.addStretch(1)
+
+
+		btn = QPushButton('⟲')
+		btn.setFixedWidth(32)
+		btn.clicked.connect( lambda e,b=btn: self.helper_rotate(b,sym) )
+		box.addWidget(btn)
+
+		pnt = evt.globalPosition().toPoint()
+		x = pnt.x()
+		y = pnt.y()
+		#self.ob_popup.move(evt.pos())
+		self.ob_popup.move(x+20,y+20)
+		self.ob_popup.show()
+
+	def helper_rotate(self, button, sym):
+		button.hide()
+		#cur = self.editor.textCursor()
+		#cur.insertText('.rotation=[0.00, 0.00, 0.00]')
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.rotation = [X,Y,Z]' % sym
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+
+		box = self.ob_popup_layout
+		box.addWidget(QLabel('rotation='))
+
+		sl = QSlider()
+		#print(dir(sl))
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		#sl.setSliderPosition(0)
+		#sl.setSizeIncrement(1)
+		sl.valueChanged.connect(lambda v: print(v))
+		box.addWidget(sl)
+
+		sl = QSlider()
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		box.addWidget(sl)
+
+		sl = QSlider()
+		sl.setMinimum(-100)
+		sl.setMaximum(100)
+		box.addWidget(sl)
+
+		self.ob_popup.show()
+
 
 
 class Window(QWidget):
