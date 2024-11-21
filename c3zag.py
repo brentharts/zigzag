@@ -21,7 +21,7 @@ options:
 
 C3 = '/usr/local/bin/c3c'
 GZIP = 'gzip'
-
+FIREFOX = '/usr/bin/firefox'
 islinux=iswindows=isapple=c3gz=c3zip=None
 if sys.platform == 'win32':
 	BLENDER = 'C:/Program Files/Blender Foundation/Blender 4.2/blender.exe'
@@ -616,9 +616,11 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 	open(out,'w').write('\n'.join(o))
 
 	if preview:
-		if sys.platform=='win32' and os.path.isfile(FIREFOX):
+		if os.path.isfile(FIREFOX):
 			## FireFox has Float16Array support
-			subprocess.Popen([FIREFOX, '-url', out])
+			tmp = '/tmp'
+			if sys.platform=='win32': tmp = 'C:\\tmp'
+			subprocess.Popen([FIREFOX, '--profile', tmp, '--new-instance', '-url', out])
 		else:
 			## on linux assume that firefox is default browser
 			webbrowser.open(out)
@@ -837,12 +839,14 @@ def blender_to_c3(world, use_vertex_colors=False):
 			else:
 				is_symmetric = is_mesh_sym(ob)  ## TODO this should check for a user added mirror mod on x
 			if is_symmetric:
+				bpy.context.view_layer.objects.active = ob
+				ob.select_set(True)
 				bpy.ops.object.mode_set(mode="EDIT")
 				bpy.ops.object.automirror()
 				bpy.ops.object.mode_set(mode="OBJECT")
 				ob.modifiers[0].use_mirror_merge=False
 
-			if not is_symmetric:
+			if not is_symmetric and '--force-sym' in sys.argv:
 				raise RuntimeError('mesh is not symmetric:%s' %ob.name)
 
 
@@ -906,7 +910,7 @@ def blender_to_c3(world, use_vertex_colors=False):
 	main = [
 		'fn void main() @extern("main") @wasm {',
 		'	gl_init(800, 600);',
-		'	view_matrix[14] = view_matrix[14] -3.0;',
+		#'	view_matrix[14] = view_matrix[14] -3.0;',
 		SHADER_SETUP,
 	]
 	for ln in setup:
@@ -1362,7 +1366,9 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 						'if(js_rand() < 0.03){',
 						'	eyes_x=(js_rand()-0.5)*0.05;',
 						'	eyes_y=(js_rand()-0.5)*0.01;',
-						'	rotateY(%s_mat, eyes_x*2);' %name,
+
+						'	rotateZ(%s_mat, eyes_x*2);' %name,
+
 						#'	gl_trans(%s_%s_ibuff, (js_rand()-0.5)*0.05,(js_rand()-0.5)*0.01,0);' % (name,midx),
 						#'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
 						'	gl_trans(%s_%s_ibuff, eyes_x,0,eyes_y);' % (name,midx),
