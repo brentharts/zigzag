@@ -56,7 +56,7 @@ RUST_INIT = '''
 
 '''
 
-def build(rs, name='rust_test', jsapi=None, preview=True):
+def build(rs, name='rust_test', jsapi=None, preview=True, out=None):
 	if not jsapi:
 		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(
 			RUST_INIT + JS_ALERT
@@ -113,8 +113,8 @@ def build(rs, name='rust_test', jsapi=None, preview=True):
 		libwebzag.JS_DECOMP,
 		'</script>',
 	]
-
-	out = '%s.html' % name
+	if out is None:
+		out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
 	if preview:
 		webbrowser.open(out)
@@ -402,6 +402,8 @@ def blender_to_rust(world):
 			else:
 				is_symmetric = is_mesh_sym(ob)
 				if is_symmetric:
+					bpy.context.view_layer.objects.active = ob
+					ob.select_set(True)
 					bpy.ops.object.mode_set(mode="EDIT")
 					bpy.ops.object.automirror()
 					bpy.ops.object.mode_set(mode="OBJECT")
@@ -430,7 +432,7 @@ def blender_to_rust(world):
 		'pub fn main() {',
 		'	unsafe{',
 		'	gl_init(800, 600);',
-		'	view_matrix[14] = view_matrix[14] - 3.0;',
+		#'	view_matrix[14] = view_matrix[14] - 3.0;',
 
 		RUST_SHADER_SETUP,
 
@@ -563,7 +565,7 @@ def mesh_to_rust(ob, mirror=False):
 					'if(js_rand() < 0.03){',
 					'	eyes_x=(js_rand()-0.5)*0.05;',
 					'	eyes_y=(js_rand()-0.5)*0.01;',
-					'	rotateY(%s_mat.as_mut_ptr(), eyes_x*2.0);' %name,
+					#'	rotateY(%s_mat.as_mut_ptr(), eyes_x*2.0);' %name,
 					'	gl_trans(%s_%s_ibuff, eyes_x, 0.0, eyes_y);' % (name,midx),
 					'	needs_upload=true;',
 				]
@@ -603,9 +605,9 @@ def mesh_to_rust(ob, mirror=False):
 	return data, setup, draw
 
 
-def build_webgl(world, name='rust_test', preview=True):
+def build_webgl(world, name='rust_test', preview=True, out=None):
 	rs = blender_to_rust(world)
-	build(rs, name=name, preview=preview)
+	build(rs, name=name, preview=preview, out=None)
 
 if __name__=='__main__':
 	for arg in sys.argv:
@@ -615,6 +617,15 @@ if __name__=='__main__':
 			getattr(libtestzag, tname)()
 			build_webgl(bpy.data.worlds[0], name='rust_'+tname, preview=False)
 			sys.exit()
+
+		elif arg.startswith('--import='):
+			exec( open( arg.split('=')[-1] ).read() )
+
+	for arg in sys.argv:
+		if arg.startswith('--export='):
+			path = arg.split('=')[-1]
+			build_webgl(bpy.data.worlds[0], out=path)
+			print('saved:', path)
 
 	if '--test-wasm' in sys.argv:
 		bpy.data.objects['Cube'].hide_set(True)
