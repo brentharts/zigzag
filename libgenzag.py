@@ -26,7 +26,32 @@ class _wrap_zig:
 			txt.from_string(value)
 			self.ob.zig_script = txt
 
+def _get_rot(self):
+	return [math.degrees(a) for a in self.rotation_euler]
+
+def _set_rot(self, d):
+	r = [math.radians(a) for a in d]
+	self.rotation_euler = r
+
+def _get_pos(self):
+	return self.location
+def _set_pos(self, v):
+	self.location = v
+
+def _get_clr(self):
+	return self.diffuse_color
+def _set_clr(self, v):
+	self.diffuse_color[0]=v[0]
+	self.diffuse_color[1]=v[1]
+	self.diffuse_color[2]=v[2]
+
 if bpy:
+	bpy.types.Object.rotation = property(_get_rot, _set_rot)
+	bpy.types.Object.position = property(_get_pos, _set_pos)
+	bpy.types.Material.color  = property(_get_clr, _set_clr)
+	bpy.types.Material.position = bpy.props.FloatVectorProperty()
+	bpy.types.Material.scale = bpy.props.FloatVectorProperty()
+
 	bpy.types.World.c3_script = bpy.props.PointerProperty(name="C3 global script", type=bpy.types.Text)
 	bpy.types.World.zig_script = bpy.props.PointerProperty(name="Zig global script", type=bpy.types.Text)
 
@@ -53,7 +78,8 @@ if bpy:
 		bl_label = "ZigZag Materials"
 		bl_space_type = "PROPERTIES"
 		bl_region_type = "WINDOW"
-		bl_context = "material"
+		#bl_context = "material"
+		bl_context = "object"
 
 		def draw(self, context):
 			if not context.active_object: return
@@ -64,6 +90,10 @@ if bpy:
 				row = box.row()
 				row.prop(mat, 'diffuse_color', text=mat.name.upper())
 				row.prop(mat, 'zigzag_object_type')
+				row = box.row()
+				row.prop(mat, 'position')
+				row = box.row()
+				row.prop(mat, 'scale')
 
 
 def smaterial(name, color):
