@@ -65,19 +65,20 @@ if sys.platform=='win32' or sys.platform=='darwin':
 		]
 		subprocess.check_call(cmd)
 
-	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider
-	from PySide6.QtCore import QTimer, Qt
+	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy
+	from PySide6.QtCore import QTimer, Qt, QSize
 	from PySide6.QtGui import (
 		QFont,
 		QImage,
 		QTextDocument,
 		QPixmap,
 		QAction,
+		QIcon,
 	)
 
 else:
 	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy
-	from PyQt6.QtCore import QTimer, Qt
+	from PyQt6.QtCore import QTimer, Qt, QSize
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
 	from PyQt6.QtGui import (
@@ -86,6 +87,7 @@ else:
 		QTextDocument,
 		QPixmap,
 		QAction,
+		QIcon,
 	)
 
 
@@ -1100,12 +1102,20 @@ class ZigZagEditor( MegasolidCodeEditor ):
 	def helper_script(self, button, sym):
 		box = self.ob_popup_layout
 		clear_layout(box)
-		box.addWidget(QLabel('%s: select language' % sym))
+		lab = QLabel('%s' % sym)
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
 
-		btn = QPushButton('C3')
+		#btn = QPushButton('C3')
+		btn = QPushButton('',self)
+		btn.setIcon(QIcon(os.path.join(_thisdir,'C3-button.png')))
+		btn.setIconSize( QSize(105,60) )
 		btn.clicked.connect(lambda e:self.helper_c3(sym) )
 		box.addWidget(btn)
-		btn = QPushButton('ZIG')
+		#btn = QPushButton('ZIG')
+		btn = QPushButton('',self)
+		btn.setIcon(QIcon(os.path.join(_thisdir,'Zig-button.png')))
+		btn.setIconSize( QSize(146,60) )
 		btn.clicked.connect(lambda e:self.helper_zig(sym) )
 		box.addWidget(btn)
 
