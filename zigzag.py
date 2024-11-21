@@ -213,7 +213,7 @@ def wasm_opt(wasm):
 	return o
 
 
-def build(zig, name='zigzag-preview', memsize=4, jsapi=JS_API, preview=True):
+def build(zig, name='zigzag-preview', memsize=4, jsapi=JS_API, preview=True, out=None):
 	tmp = '/tmp/%s.zig' % name
 	if type(zig) is list:
 		open(tmp, 'w').write('\n'.join(zig))
@@ -264,7 +264,8 @@ def build(zig, name='zigzag-preview', memsize=4, jsapi=JS_API, preview=True):
 		'</script>',
 	]
 
-	out = '%s.html' % name
+	if out is None:
+		out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
 	if preview:
 		if sys.platform=='win32' and os.path.isfile(FIREFOX):
@@ -874,6 +875,8 @@ def blender_to_zig_webgl(world):
 			else:
 				is_symmetric = is_mesh_sym(ob)
 				if is_symmetric:
+					bpy.context.view_layer.objects.active = ob
+					ob.select_set(True)
 					bpy.ops.object.mode_set(mode="EDIT")
 					bpy.ops.object.automirror()
 					bpy.ops.object.mode_set(mode="OBJECT")
@@ -902,7 +905,7 @@ def blender_to_zig_webgl(world):
 		'	gl_init(800, 600);',
 		# error: binary operator `-` has whitespace on one side, but not the other.
 		#'	view_matrix[14] = view_matrix[14] -3.0;',
-		'	view_matrix[14] = view_matrix[14] - 3.0;',
+		#'	view_matrix[14] = view_matrix[14] - 3.0;',
 		ZIG_SHADER_SETUP,
 	] + ['\t'+ln for ln in setup] + [
 		'	gl_use_program(prog);',
@@ -1102,7 +1105,7 @@ def mesh_to_zig(ob, mirror=False):
 					'	eyes_x=(js_rand()-0.5)*0.05;',
 					'	eyes_y=(js_rand()-0.5)*0.01;',
 					#'	rotateY(%s_mat, eyes_x*2);' %name,
-					'	rotateY(&%s_mat, eyes_x*2);' %name,
+					#'	rotateY(&%s_mat, eyes_x*2);' %name,
 					#'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
 					'	gl_trans(%s_%s_ibuff, eyes_x,0,eyes_y);' % (name,midx),
 					'	needs_upload=true;',
@@ -1178,13 +1181,14 @@ ZIG_ZAG_INIT = '''
 
 '''
 
-def build_webgl(world, name='zig', preview=True):
+def build_webgl(world, name='zig', preview=True, out=None):
 	zig = blender_to_zig_webgl(world)
 	build(
 		zig,
 		name=name, 
 		jsapi=libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(ZIG_ZAG_INIT), 
-		preview=preview
+		preview=preview,
+		out=out
 	)
 
 
@@ -1283,10 +1287,17 @@ if __name__=='__main__':
 		elif arg.startswith('--import='):
 			exec( open( arg.split('=')[-1] ).read() )
 
+	for arg in sys.argv:
+		if arg.startswith('--export='):
+			path = arg.split('=')[-1]
+			build_webgl(bpy.data.worlds[0], out=path)
+			print('saved:', path)
+
+
 	if '--pipe' in sys.argv:
 		bpy.ops.zigzag.run()
 
-	if '--test-2d' in sys.argv:
+	elif '--test-2d' in sys.argv:
 		if '--monkey' in sys.argv:
 			bpy.ops.object.gpencil_add(type='MONKEY')
 			ob = bpy.context.active_object
