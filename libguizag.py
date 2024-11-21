@@ -72,6 +72,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 		QImage,
 		QTextDocument,
 		QPixmap,
+		QAction,
 	)
 
 else:
@@ -84,6 +85,7 @@ else:
 		QImage,
 		QTextDocument,
 		QPixmap,
+		QAction,
 	)
 
 
@@ -153,7 +155,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.glview = None
 			self.materials_layout = None
 
-		super(ZigZagEditor,self).reset(alt_widget=alt_widget)
+		super(ZigZagEditor,self).reset(width=1060, alt_widget=alt_widget)
 
 		self.on_syntax_highlight_post = self.__syntax_highlight_post
 
@@ -199,6 +201,13 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.ob_popup_layout = layout = QHBoxLayout()
 		wid.setLayout(layout)
 		layout.addWidget(QLabel('hello object popup'))
+
+		act = QAction("export", self)
+		act.setToolTip("export html file")
+		act.setStatusTip("export html (WEBGL+WASM) saves zigzag-preview.html to ~/Desktop")
+		act.triggered.connect( self.export_html )
+		self.format_toolbar.addAction(act)
+
 
 	def clear_object_popup(self):
 		clear_layout(self.ob_popup_layout)
@@ -617,7 +626,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.on_new_blend(blend)
 			cur.insertText('\n')
 
-	def run_script(self, *args):
+	def run_script(self, *args, **kw):
+		export = kw.get('export',None)
+
 		txt = self.editor.toPlainText()
 		header = [
 			'import bpy',
@@ -698,13 +709,24 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		else:
 			tmp='/tmp/zigzag_script.py'
 		open(tmp,'wb').write(py.encode('utf-8'))
-		cmd = [codeeditor.BLENDER, '--window-geometry','640','100', '800','800', '--python-exit-code','1']
-		if has_c3:
-			cmd += ['--python', c3zagpy, '--', '--import='+tmp ]
+		cmd = [codeeditor.BLENDER, '--python-exit-code','1']
+		if export:
+			cmd.append('--background')
 		else:
+			cmd += ['--window-geometry','640','100', '800','800']
+		if has_zig:
 			cmd += ['--python', zigzagpy, '--', '--import='+tmp ]
+		else:
+			cmd += ['--python', c3zagpy, '--', '--import='+tmp ]
+		if export:
+			cmd.append('--export='+export)
 		print(cmd)
 		subprocess.check_call(cmd)
+
+	def export_html(self, *args):
+		#tmp = '/tmp/zigzag-preview.html'
+		tmp = os.path.expanduser('~/Desktop/zigzag-preview.html')
+		self.run_script( export=tmp )
 
 	def __syntax_highlight_post(self, html):
 		print('on_syntax_highlight_post')
