@@ -76,7 +76,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 	)
 
 else:
-	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider
+	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy
 	from PyQt6.QtCore import QTimer, Qt
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -155,7 +155,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.glview = None
 			self.materials_layout = None
 
-		super(ZigZagEditor,self).reset(width=1060, alt_widget=alt_widget)
+		width = 800
+		if sys.platform=='linux': 
+			width = 1060
+		super(ZigZagEditor,self).reset(width=width, alt_widget=alt_widget)
 
 		self.on_syntax_highlight_post = self.__syntax_highlight_post
 
@@ -205,9 +208,35 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		act = QAction("export", self)
 		act.setToolTip("export html file")
 		act.setStatusTip("export html (WEBGL+WASM) saves zigzag-preview.html to ~/Desktop")
+		act.setShortcut("F10")
 		act.triggered.connect( self.export_html )
 		self.format_toolbar.addAction(act)
 
+		self.setFullscreen = QAction("❖", self)
+		self.setFullscreen.setShortcut("F11")
+		self.setFullscreen.setToolTip('toggle fullscreen mode')
+		self.setFullscreen.setStatusTip("Change to fullscreen mode")
+		self.setFullscreen.triggered.connect(self.toggle_fs)
+		self.format_toolbar.addAction(self.setFullscreen)
+
+		self.exit_button = None
+
+	def toggle_fs(self):
+		if self.isFullScreen():
+			self.showNormal()
+			self.exit_button.hide()
+		else:
+			if not self.exit_button:
+				spacer = QWidget()
+				spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+				self.format_toolbar.addWidget(spacer)
+				self.exit_button = QPushButton("✖")
+				self.exit_button.setToolTip('close window')
+				self.exit_button.clicked.connect(lambda:self.close())
+				self.format_toolbar.addWidget(self.exit_button)
+
+			self.exit_button.show()
+			self.showFullScreen()
 
 	def clear_object_popup(self):
 		clear_layout(self.ob_popup_layout)
@@ -477,9 +506,23 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		return self.ob_syms[name]
 
 	def open_blend(self, url):
-		cmd = [codeeditor.BLENDER, url, '--window-geometry','640','100', '800','800', '--python-exit-code','1', '--python', os.path.join(_thisdir,'libgenzag.py')]
+		is_fs = self.isFullScreen()
+		if is_fs:
+			self.showNormal()
+		self.hide()
+		cmd = [codeeditor.BLENDER, url]
+		if is_fs:
+			cmd += ['--window-fullscreen']
+		else:
+			cmd += [ '--window-geometry','640','100', '800','800']
+		cmd += ['--python-exit-code','1', '--python', os.path.join(_thisdir,'libgenzag.py')]
 		print(cmd)
 		subprocess.check_call(cmd)
+		self.show()
+		if is_fs:
+			## TODO fix linux wayland? problem exit from fullscreen is broken
+			## Qt6 is wrong when self.isFullScreen() called?
+			self.showFullScreen()
 
 
 	def blend_to_qt(self, dump):
