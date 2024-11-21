@@ -327,7 +327,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		for ln in txt.splitlines():
 			if c3_script is not None:
 				if ln == "'''":
-					c3_script.append('}')  ## end of wrapper function __test__
+					if c3_script[0].endswith('{'):
+						c3_script.append('}')  ## end of wrapper function __object_script__
 					c3_script.append(C3_EXTERNS)
 					self.parse_c3( '\n'.join(c3_script) )
 					c3_script = None
@@ -335,7 +336,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					c3_script.append(ln)
 			elif zig_script is not None:
 				if ln == "'''":
-					zig_script.append('}')
+					if zig_script[0].endswith('{'):
+						zig_script.append('}')
 					zig_script.append(ZIG_EXTERNS)
 					self.parse_zig( '\n'.join(zig_script) )
 					zig_script = None
@@ -356,15 +358,26 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					except:
 						pass
 
+			for binfo in self.blends:
+				sym = binfo['SYMBOL']
+				if ln.count(sym)==1:
+					cmd = ln.split(sym)[-1]
+					if cmd.startswith('.c3.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
+						c3_script = ['']
+						c3_scripts[sym] = c3_script
+					elif cmd.startswith('.zig.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
+						zig_script = ['']
+						zig_scripts[sym] = zig_script
+
 			for name in self.ob_syms:
 				sym = self.ob_syms[name]
 				if ln.count(sym)==1:
 					cmd = ln.split(sym)[-1]
 					if cmd.startswith('.c3.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
-						c3_script = ['fn void __test__(){']
+						c3_script = ['fn void __object_script__(){']
 						c3_scripts[name] = c3_script
 					elif cmd.startswith('.zig.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
-						zig_script = ['fn __test__() void {']
+						zig_script = ['fn __object_script__() void {']
 						zig_scripts[name] = zig_script
 
 					for key in ('rotation', 'scale'):
