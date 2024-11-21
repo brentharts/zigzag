@@ -194,21 +194,14 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		self.ob_popup = wid = ObjectPopup(self)
 		wid.move(200,200)
-		wid.resize(400, 64)
-		wid.setStyleSheet('background-color:gray; color: black')
+		wid.resize(300, 80)
+		wid.setStyleSheet('background-color:rgba(128,128,128,0.25); color: black')
 		self.ob_popup_layout = layout = QHBoxLayout()
 		wid.setLayout(layout)
 		layout.addWidget(QLabel('hello object popup'))
 
 	def clear_object_popup(self):
 		clear_layout(self.ob_popup_layout)
-		#self.ob_popup.removeLayout(self.ob_popup_layout)
-
-		#self.ob_popup = wid = ObjectPopup(self)
-		#wid.resize(400, 64)
-		#wid.setStyleSheet('background-color:gray; color: black')
-		#self.ob_popup_layout = QHBoxLayout()
-		#self.ob_popup.setLayout(self.ob_popup_layout)
 		return self.ob_popup_layout
 
 	def anim_loop(self):
@@ -652,7 +645,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				sel = info['selected']
 				blends.append(info)
 				header += [
-				'with bpy.data.libraries.load("%s") as (data_from, data_to):' % info['URL'],
+				'with bpy.data.libraries.load(r"%s") as (data_from, data_to):' % info['URL'],
 				'	data_to.objects=data_from.objects',
 
 				'__blend__%s=BlendWrap()' % len(blends),
@@ -851,8 +844,6 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.editor.setText('\n'.join(o))
 		self.do_syntax_hl()
 
-		#box = self.ob_popup_layout
-		#clear_layout(box)
 		box = self.clear_object_popup()
 		box.addWidget(QLabel('%s.position=' % sym))
 
@@ -861,27 +852,19 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		vec = info['SCALE']
 		bx = QVBoxLayout()
 		con = QWidget()
+		con.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
 		con.setLayout(bx)
 		box.addWidget(con)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
+		sl = new_slider(-100,100)
 		sl.valueChanged.connect(lambda v: self.on_sym_scl(sym, 0, v, vec))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
+		sl = new_slider(-100,100)
 		sl.valueChanged.connect(lambda v: self.on_sym_scl(sym, 1, v, vec))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
+		sl = new_slider(-100,100)
 		sl.valueChanged.connect(lambda v: self.on_sym_scl(sym, 2, v, vec))
 		bx.addWidget(sl)
 
@@ -922,27 +905,18 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		bx = QVBoxLayout()
 		con = QWidget()
 		con.setLayout(bx)
-		#box.addLayout(bx)
+		con.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
 		box.addWidget(con)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
+		sl = new_slider(-100,100)
 		sl.valueChanged.connect(lambda v: self.on_sym_pos(sym, 0, v, vec))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
+		sl = new_slider(-100,100)
 		sl.valueChanged.connect(lambda v: self.on_sym_pos(sym, 1, v, vec))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-100)
-		sl.setMaximum(100)
+		sl = new_slider(-100,100)
 		sl.valueChanged.connect(lambda v: self.on_sym_pos(sym, 2, v, vec))
 		bx.addWidget(sl)
 
@@ -983,24 +957,15 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		con.setLayout(bx)
 		box.addWidget(con)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(0)
-		sl.setMaximum(100)
+		sl = new_slider(color='pink', bgcolor='red')
 		sl.valueChanged.connect(lambda v: self.on_sym_color(sym, 0, v, vec, info))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(0)
-		sl.setMaximum(100)
+		sl = new_slider(color='lightgreen', bgcolor='green')
 		sl.valueChanged.connect(lambda v: self.on_sym_color(sym, 1, v, vec, info))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(0)
-		sl.setMaximum(100)
+		sl = new_slider(color='lightblue', bgcolor='blue')
 		sl.valueChanged.connect(lambda v: self.on_sym_color(sym, 2, v, vec, info))
 		bx.addWidget(sl)
 
@@ -1122,36 +1087,32 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.do_syntax_hl()
 
 		box = self.ob_popup_layout
-		box.addWidget(QLabel('%s.rotation=' % sym))
+		lab = QLabel('%s.rotation' % sym)
+		lab.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
+		box.addWidget(lab)
 
 		vec = [0,0,0]
 
 		bx = QVBoxLayout()
 		con = QWidget()
+		con.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
 		con.setLayout(bx)
 		box.addWidget(con)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-180)
-		sl.setMaximum(180)
+
+		sl = new_slider(-180, 180)
 		sl.valueChanged.connect(lambda v: self.on_sym_rotate(sym, 0, v, vec))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-180)
-		sl.setMaximum(180)
+		sl = new_slider(-180, 180)
 		sl.valueChanged.connect(lambda v: self.on_sym_rotate(sym, 1, v, vec))
 		bx.addWidget(sl)
 
-		sl = QSlider()
-		sl.setOrientation(Qt.Orientation.Horizontal)
-		sl.setMinimum(-180)
-		sl.setMaximum(180)
+		sl = new_slider(-180, 180)
 		sl.valueChanged.connect(lambda v: self.on_sym_rotate(sym, 2, v, vec))
 		bx.addWidget(sl)
 
+		#self.ob_popup.resize(300,80)
 		self.ob_popup.show()
 
 	def on_sym_rotate(self, sym, axis, value, vec):
@@ -1167,6 +1128,28 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.active_object['rotation'] = vec
 		if self.glview:
 			self.glview.update()
+
+def new_slider(min=0, max=100, color='grey', bgcolor='lightblue'):
+	sl = QSlider()
+	sl.setStyleSheet('''
+QSlider::groove:horizontal {
+	background-color: %s;
+	border: 1px solid;
+	height: 10px;
+	margin: 0px;
+}
+QSlider::handle:horizontal {
+	background-color: %s;
+	border: 1px solid;
+	height: 30px;
+	width: 40px;
+	margin: -15px 0px;
+}''' % (bgcolor, color))
+	sl.setOrientation(Qt.Orientation.Horizontal)
+	sl.setMinimum(min)
+	sl.setMaximum(max)
+	return sl
+
 
 BLEND_WRAP_CLASS = '''
 
