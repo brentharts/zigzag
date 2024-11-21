@@ -674,6 +674,10 @@ def grease_to_zig(ob, datas, head, draw, setup, scripts, obj_index):
 
 def blender_to_zig(world, init_data_in_groups=True):
 	head = [ZIG_HEADER]
+	if world.zig_script:
+		head.append(world.zig_script.as_string())
+
+
 	setup = [
 		'export fn main() void {',
 		'	html_canvas_resize(%s, %s);' % (800,600),
@@ -859,6 +863,10 @@ def blender_to_zig_webgl(world):
 		gen_shaders(),
 		DEBUG_CAMERA,
 	]
+
+	if world.zig_script:
+		header.append(world.zig_script.as_string())
+
 	data = []
 	setup = []
 	draw = []
