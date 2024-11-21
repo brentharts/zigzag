@@ -619,7 +619,9 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 		if os.path.isfile(FIREFOX):
 			## FireFox has Float16Array support
 			tmp = '/tmp'
-			if sys.platform=='win32': tmp = 'C:\\tmp'
+			if sys.platform=='win32':
+				tmp = 'C:\\tmp'
+				out = out.replace('\\', '/')  ## os.path.expanduser on Windows returns backslashes? which confuse firefox
 			subprocess.Popen([FIREFOX, '--profile', tmp, '--new-instance', '-url', out])
 		else:
 			## on linux assume that firefox is default browser
@@ -801,6 +803,10 @@ def blender_to_c3(world, use_vertex_colors=False):
 		DEBUG_CAMERA,
 		HELPER_FUNCS,
 	]
+
+	if world.c3_script:
+		data.append(world.c3_script.as_string())
+
 	setup = []
 	draw = []
 	for ob in bpy.data.objects:
