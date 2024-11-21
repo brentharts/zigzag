@@ -572,7 +572,7 @@ def c3_wasm_strip(wasm):
 		open(wasm,'wb').write(c)
 
 SERVER_PROC = None
-def build_wasm( world, name='test-c3', preview=True ):
+def build_wasm( world, name='test-c3', preview=True, out=None ):
 	global SERVER_PROC
 	if SERVER_PROC: SERVER_PROC.kill()
 	o = blender_to_c3(world)
@@ -611,7 +611,8 @@ def build_wasm( world, name='test-c3', preview=True ):
 		libwebzag.JS_DECOMP,
 		'</script>',
 	]
-	out = '%s.html' % name
+	if out is None:  ## just saves into the current folder
+		out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
 
 	if preview:
@@ -1466,6 +1467,12 @@ if __name__=='__main__':
 			sys.exit()
 		elif arg.startswith('--import='):
 			exec( open( arg.split('=')[-1] ).read() )
+
+	for arg in sys.argv:
+		if arg.startswith('--export='):
+			path = arg.split('=')[-1]
+			build_wasm(bpy.data.worlds[0], out=path)
+			print('saved:', path)
 
 
 	if '--test-wasm' in sys.argv:
