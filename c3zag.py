@@ -488,6 +488,8 @@ class C3ObjectPanel(bpy.types.Panel):
 		#self.layout.prop(ob, 'c3_hide')  ## TODO
 
 		self.layout.label(text="C3 Object Scripts")
+		self.layout.prop(ob, 'c3_script')
+
 		foundUnassignedScript = False
 		for i in range(zigzag.MAX_SCRIPTS_PER_OBJECT):
 			hasProperty = (
@@ -521,8 +523,36 @@ class C3WorldPanel(bpy.types.Panel):
 	bl_region_type = "WINDOW"
 	bl_context = "world"
 	def draw(self, context):
+		self.layout.prop(context.world, 'c3_script')
 		self.layout.operator("c3.export_wasm", icon="CONSOLE")
 
+
+@bpy.utils.register_class
+class C3ZagMainOperator(bpy.types.Operator):
+	"c3zag main loop"
+	bl_idname = "c3zag.run"
+	bl_label = "c3zag_run"
+	bl_options = {'REGISTER'}
+	def modal(self, context, event):
+		if event.type == "TIMER":
+			sys.stdout.flush()
+		return {'PASS_THROUGH'} # will not supress event bubbles
+
+	def invoke (self, context, event):
+		global _timer
+		if _timer is None:
+			_timer = self._timer = context.window_manager.event_timer_add(
+				time_step=0.05,
+				window=context.window
+			)
+			context.window_manager.modal_handler_add(self)
+			return {'RUNNING_MODAL'}
+		return {'FINISHED'}
+
+	def execute (self, context):
+		return self.invoke(context, None)
+
+_timer=None
 
 mini_gl_const = {
 	'UNSIGNED_SHORT':5123,
@@ -1486,6 +1516,8 @@ if __name__=='__main__':
 			build_wasm(bpy.data.worlds[0], out=path)
 			print('saved:', path)
 
+	if '--pipe' in sys.argv:
+		bpy.ops.c3zag.run()
 
 	if '--test-wasm' in sys.argv:
 		test_scene()
