@@ -265,10 +265,13 @@ class Viewer(QOpenGLWidget):
 
 
 	def resizeGL(self, w, h):
-		pass
+		print('resizeGL:', w,h)
+		self._width = w
+		self._height = h
+		glViewport(0,0,self._width,self._height)
 
 	def debug_paintGL(self):
-		print('gl redraw debug')
+		#print('gl redraw debug')
 		glClear(GL_COLOR_BUFFER_BIT)
 		self.program.bind()
 
