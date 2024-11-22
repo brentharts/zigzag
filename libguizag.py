@@ -1,4 +1,4 @@
-import os, sys, subprocess, atexit, string, math
+import os, sys, subprocess, atexit, string, math, hashlib
 from random import random, uniform
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
@@ -563,6 +563,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if is_fs:
 			self.showNormal()
 		self.hide()
+		hash_before = hashlib.md5(open(url,'rb').read()).hexdigest()
 		cmd = [codeeditor.BLENDER, url]
 		if is_fs:
 			cmd += ['--window-fullscreen']
@@ -577,6 +578,14 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			## Qt6 is wrong when self.isFullScreen() called?
 			self.showFullScreen()
 
+		hash_after = hashlib.md5(open(url,'rb').read()).hexdigest()
+		if hash_before != hash_after:
+			print('user updated blend file')
+			if self.active_blend == url:
+				if self.active_name in self.glview.buffers:
+					self.glview.buffers.pop(self.active_name)
+				self.view_blender_object(self.active_name, self.active_blend)
+
 
 	def blend_to_qt(self, dump):
 		layout = QVBoxLayout()
@@ -589,7 +598,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		layout.addWidget(qsym)
 
 		a,b = os.path.split(url)
-		btn = QPushButton('open: '+b)
+		#btn = QPushButton('open: '+b)
+		btn = QPushButton('blender')
+		#btn.setFixedWidth(64)
+		btn.setIcon(QIcon(os.path.join(_thisdir,'Blender-button.png')))
+		btn.setIconSize( QSize(59,50) )
+
 		btn.setStyleSheet('background-color:gray; color:white')
 		btn.clicked.connect(lambda : self.open_blend(url))
 		layout.addWidget(btn)
@@ -1449,7 +1463,7 @@ class Window(QWidget):
 			if arg.endswith('.blend'):
 				cmd.append(arg)
 				break
-		cmd +=['--window-geometry','640','100', '800','800', '--python-exit-code', '1', '--python', zigzagpy]
+		cmd +=['--window-geometry','640','100', '1100','800', '--python-exit-code', '1', '--python', c3zagpy]
 		exargs = []
 		for arg in sys.argv:
 			if arg.startswith('--'):
@@ -1704,14 +1718,17 @@ class Window(QWidget):
 
 		self.main_vbox.addStretch(1)
 
-		button_ok = QPushButton("OK")
-		button_ok.clicked.connect(self.run_blender)
-		button_cancel = QPushButton("Cancel")
+		btn = QPushButton('Blender')
+		btn.setIcon(QIcon(os.path.join(_thisdir,'Blender-button.png')))
+		btn.setIconSize( QSize(59,50) )
+		btn.clicked.connect(self.run_blender)
+
+		button_cancel = QPushButton("Exit")
 		button_cancel.clicked.connect(sys.exit)
 
 		hbox = QHBoxLayout()
 		hbox.addStretch(1)
-		hbox.addWidget(button_ok)
+		hbox.addWidget(btn)
 		hbox.addWidget(button_cancel)
 
 		self.main_vbox.addLayout(hbox)
