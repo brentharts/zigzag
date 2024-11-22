@@ -65,7 +65,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 		]
 		subprocess.check_call(cmd)
 
-	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy
+	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy, QLayout
 	from PySide6.QtCore import QTimer, Qt, QSize
 	from PySide6.QtGui import (
 		QFont,
@@ -77,7 +77,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 	)
 
 else:
-	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy
+	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy, QLayout
 	from PyQt6.QtCore import QTimer, Qt, QSize
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -139,27 +139,42 @@ extern fn js_eval(c:[*:0] const u8) void;
 class ZigZagEditor( MegasolidCodeEditor ):
 	LATIN = tuple([chr(i) for i in range(192, 420)])  #À to ƣ
 	CYRILLIC = tuple('Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split())
-	def reset(self):
+
+	def close(self):
+		print('closing...')
+		self._parent.show()
+		super().close()
+
+	def reset(self, parent=None):
+		self._parent=parent
 		alt_widget = None
 		if libglzag:
 			self.glview = libglzag.Viewer(width=300,height=300)
 
 			layout = QVBoxLayout()
+			#layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+
 			alt_widget = QWidget()
 			alt_widget.setLayout(layout)
 			layout.addWidget(self.glview)
-			layout.addStretch(1)
+			#layout.addStretch(1)
 
 			self.materials_layout = QVBoxLayout()
-			layout.addLayout(self.materials_layout)
+			## https://stackoverflow.com/questions/28660960/resize-qmainwindow-to-minimal-size-after-content-of-layout-changes
+			#self.materials_layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+			self.materials_container = QWidget()
+			#self.materials_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+			self.materials_container.setLayout(self.materials_layout)
+			layout.addWidget(self.materials_container)
+			#layout.addLayout(self.materials_layout)
 
 		else:
 			self.glview = None
 			self.materials_layout = None
 
-		width = 800
+		width = 900
 		if sys.platform=='linux': 
-			width = 1060
+			width = 1150
 		super(ZigZagEditor,self).reset(width=width, alt_widget=alt_widget)
 
 		self.on_syntax_highlight_post = self.__syntax_highlight_post
@@ -180,6 +195,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.com_timer.start(2000)
 
 		self.active_object = None
+		self.active_blend = None
 		self.anim_timer = QTimer()
 		self.anim_timer.timeout.connect(self.anim_loop)
 		self.anim_timer.start(30)
@@ -214,6 +230,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		act.triggered.connect( self.export_html )
 		self.format_toolbar.addAction(act)
 
+		self._is_fs = False  ## this is only required on Linux/Wayland?
 		self.setFullscreen = QAction("❖", self)
 		self.setFullscreen.setShortcut("F11")
 		self.setFullscreen.setToolTip('toggle fullscreen mode')
@@ -221,30 +238,57 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.setFullscreen.triggered.connect(self.toggle_fs)
 		self.format_toolbar.addAction(self.setFullscreen)
 
-		self.exit_button = None
+		spacer = QWidget()
+		spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+		self.format_toolbar.addWidget(spacer)
+
+		self.exit_button = QPushButton("✖")
+		self.exit_button.setToolTip('close window')
+		self.exit_button.clicked.connect(lambda:self.close())
+		self.format_toolbar.addWidget(self.exit_button)
 
 	def toggle_fs(self):
-		if self.isFullScreen():
-			self.showNormal()
-			self.exit_button.hide()
-		else:
-			if not self.exit_button:
-				spacer = QWidget()
-				spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-				self.format_toolbar.addWidget(spacer)
-				self.exit_button = QPushButton("✖")
-				self.exit_button.setToolTip('close window')
-				self.exit_button.clicked.connect(lambda:self.close())
-				self.format_toolbar.addWidget(self.exit_button)
+		if self.isFullScreen() or (sys.platform=='linux' and self._is_fs):
+			self.editor.zoomOut(8)
+			#self.exit_button.hide()
+			self._is_fs = False
 
+			if self.glview:
+				self.glview.setFixedWidth(300)
+				self.glview.setFixedHeight(300)
+
+			if self.active_object:
+				self.update_active_materials()
+
+			#self.adjustSize()
+			#self.setGeometry(50,50,800,400)
+			#print(dir(self))
+			self.showNormal()
+			## https://stackoverflow.com/questions/28660960/resize-qmainwindow-to-minimal-size-after-content-of-layout-changes
+			for i in range(0, 10):
+				QApplication.processEvents()
+			#self.resize(self.minimumSizeHint())
+			self.resize(1000,400)
+			if sys.platform=='linux':
+				self.resize(1150,600)
+			else:
+				self.resize(900,600)
+
+		else:
+			self.editor.zoomIn(8)
 			self.exit_button.show()
 			self.showFullScreen()
+			self._is_fs = True
+			if self.glview:
+				self.glview.setFixedWidth(700)
+				self.glview.setFixedHeight(700)
+			self.update_active_materials()
 
 	def clear_object_popup(self):
 		clear_layout(self.ob_popup_layout)
 		return self.ob_popup_layout
 
-	def anim_loop(self):
+	def _anim_loop(self):
 		if not self.active_object: return
 		ob = self.active_object
 		needs_update = False
@@ -277,6 +321,13 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		if needs_update:
 			self.glview.update()
+
+	def anim_loop(self):
+		try:
+			self._anim_loop()
+		except KeyboardInterrupt:
+			print('Ctrl+C exit')
+			sys.exit()
 
 
 	def parse_zig(self, zig):
@@ -555,7 +606,6 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		qlab.setPixmap(self.blend_previews[url])
 		layout.addWidget(qlab)
 
-
 		layout.addStretch(1)
 
 		for name in dump['objects']:
@@ -592,6 +642,99 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		return container
 
+	def update_active_materials(self):
+		if not self.active_blend: return
+		blend = self.active_blend
+		info = self.active_object
+		rthresh = 4
+		if self._is_fs:
+			rthresh = 8
+
+		#print(dir(self.materials_layout))
+		clear_layout(self.materials_layout)
+		self.materials_layout.setContentsMargins(1,1,1,1)
+		container = QWidget()
+		#container.setFixedHeight(300)
+		self.materials_layout.addWidget(container)
+		sub = QVBoxLayout()
+		sub.setContentsMargins(1,1,1,1)
+		container.setLayout(sub)
+		#sub = self.materials_layout
+		container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+		row = []
+		for mat in info['materials']:
+			self.shared_materials[mat['name']] = mat
+
+			box = QVBoxLayout()
+			con = QWidget()
+			#con.setFixedHeight(70)
+			con.setLayout(box)
+			mat['WIDGET'] = con
+			row.append(con)
+
+			lab = QLabel(mat['name'])
+			if self._is_fs:
+				lab.setStyleSheet('font-size:14px')
+			else:
+				lab.setStyleSheet('font-size:10px')
+			box.addWidget(lab)
+
+			if 'class' in mat:
+				btn = QPushButton(mat['class'])
+				btn.setFixedHeight(16)
+				btn.setFixedWidth(60)
+				btn.setStyleSheet('font-size:8px')
+				box.addWidget(btn)
+
+			msym = self.material_sym(mat['name'], blend)
+			btn = QPushButton( msym )
+			if self._is_fs:
+				btn.setStyleSheet('font-size:32px')
+				btn.setFixedWidth(50)
+			else:
+				btn.setFixedWidth(32)
+			box.addWidget(btn)
+			btn.clicked.connect(lambda a,s=msym: self.insert_material(s))
+
+			r,g,b,a = mat['color']
+			brightness = (r+g+b)/3
+			r = int(r*255)
+			g = int(g*255)
+			b = int(b*255)
+			if brightness > 0.8:
+				con.setStyleSheet('background-color:rgb(%s,%s,%s); color:black' % (r,g,b))
+			else:
+				con.setStyleSheet('background-color:rgb(%s,%s,%s)' % (r,g,b))
+
+			if len(row) >= rthresh:
+				bx = QHBoxLayout()
+				for wid in row: bx.addWidget(wid)
+				#self.materials_layout.addLayout(bx)
+				#co = QWidget()
+				#co.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+				#co.setLayout(bx)
+				#self.materials_layout.addWidget(co)
+				sub.addLayout(bx)
+				row = []
+
+		if len(row):
+			bx = QHBoxLayout()
+			for wid in row: bx.addWidget(wid)
+			#self.materials_layout.addLayout(bx)
+			#co = QWidget()
+			#co.setLayout(bx)
+			#self.materials_layout.addWidget(co)
+			sub.addLayout(bx)
+			row = []
+
+		#self.materials_layout.addStretch(1)
+		#self.glview.adjustSize()
+		#self.materials_container.adjustSize()
+		#self.editor.adjustSize()
+		#self.materials_layout.update()
+
+
 	def view_blender_object(self, obname, blend):
 		print('view_blender_object:', obname, blend)
 		if self.glview:
@@ -599,59 +742,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			info['EYES_X'] = 0
 			info['EYES_Y'] = 0
 			self.active_object = info
-			clear_layout(self.materials_layout)
-			row = []
-			for mat in info['materials']:
-				print(mat)
-				self.shared_materials[mat['name']] = mat
+			self.active_blend = blend
+			self.active_name = obname
+			self.update_active_materials()
 
-				box = QVBoxLayout()
-				con = QWidget()
-				con.setLayout(box)
-				mat['WIDGET'] = con
-				#self.materials_layout.addWidget(con)
-				row.append(con)
-
-				lab = QLabel(mat['name'])
-				lab.setStyleSheet('font-size:10px')
-				box.addWidget(lab)
-
-				if 'class' in mat:
-					btn = QPushButton(mat['class'])
-					btn.setFixedHeight(16)
-					btn.setFixedWidth(60)
-					btn.setStyleSheet('font-size:8px')
-					box.addWidget(btn)
-
-				#box.addStretch(1)
-
-				msym = self.material_sym(mat['name'], blend)
-				btn = QPushButton( msym )
-				btn.setFixedWidth(32)
-				box.addWidget(btn)
-				btn.clicked.connect(lambda a,s=msym: self.insert_material(s))
-
-				r,g,b,a = mat['color']
-				brightness = (r+g+b)/3
-				r = int(r*255)
-				g = int(g*255)
-				b = int(b*255)
-				if brightness > 0.8:
-					con.setStyleSheet('background-color:rgb(%s,%s,%s); color:black' % (r,g,b))
-				else:
-					con.setStyleSheet('background-color:rgb(%s,%s,%s)' % (r,g,b))
-
-				if len(row) >= 2:
-					bx = QHBoxLayout()
-					for wid in row: bx.addWidget(wid)
-					self.materials_layout.addLayout(bx)
-					row = []
-
-			if len(row):
-				bx = QHBoxLayout()
-				for wid in row: bx.addWidget(wid)
-				self.materials_layout.addLayout(bx)
-				row = []
 
 
 
@@ -856,12 +950,16 @@ class ZigZagEditor( MegasolidCodeEditor ):
 	def blend_popup(self, blend, info, evt):
 		box = self.ob_popup_layout
 		clear_layout(box)
-		box.addWidget(QLabel(blend))
 
 		for o in self.blends:
 			if o['URL']==blend:
 				sym = o['SYMBOL']
 				break
+
+		lab = QLabel('%s: %s' % (sym,blend))
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
+
 		btn = QPushButton('🖹')
 		btn.setToolTip("attach script to world")
 		btn.setFixedWidth(32)
@@ -879,7 +977,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		#box = self.ob_popup_layout
 		#clear_layout(box)
 		box = self.clear_object_popup()
-		box.addWidget(QLabel('%s: %s' %(sym, matname)))
+
+		lab = QLabel('%s: %s' % (sym,matname))
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
 
 		btn = QPushButton('⟴')
 		btn.setFixedWidth(32)
@@ -912,7 +1013,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.do_syntax_hl()
 
 		box = self.clear_object_popup()
-		box.addWidget(QLabel('%s.position=' % sym))
+
+		lab = QLabel(sym)
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
 
 		if 'SCALE' not in info:
 			info['SCALE'] = [1,1,1]
@@ -964,7 +1068,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		#box = self.ob_popup_layout
 		#clear_layout(box)
 		box = self.clear_object_popup()
-		box.addWidget(QLabel('%s.position=' % sym))
+		lab = QLabel(sym)
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
 
 		if 'POSITION' not in info:
 			info['POSITION'] = [0,0,0]
@@ -1016,7 +1122,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		#box = self.ob_popup_layout
 		#clear_layout(box)
 		box = self.clear_object_popup()
-		box.addWidget(QLabel('%s.color=' % sym))
+		lab = QLabel(sym)
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
 
 		vec = info['color']
 		bx = QVBoxLayout()
@@ -1068,16 +1176,19 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		clear_layout(box)
 
 
-		btn = QPushButton('▶')
-		btn.setToolTip("view object")
+		#btn = QPushButton('▶')
+		#btn.setToolTip("view object")
 
-		btn.setFixedWidth(32)
-		box.addWidget(btn)
-		btn.clicked.connect(
-			lambda e,n=obname: self.view_blender_object(n, blend)
-		)
+		#btn.setFixedWidth(32)
+		#box.addWidget(btn)
+		#btn.clicked.connect(
+		#	lambda e,n=obname: self.view_blender_object(n, blend)
+		#)
 
-		box.addWidget(QLabel('%s: %s' %(sym, obname)))
+		lab = QLabel('%s: %s' % (sym,obname))
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
+
 
 		btn = QPushButton('🖹')
 		btn.setToolTip("attach script to object")
@@ -1162,9 +1273,13 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.do_syntax_hl()
 
 		box = self.ob_popup_layout
-		lab = QLabel('%s.rotation' % sym)
-		lab.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
+		#lab = QLabel('%s.rotation' % sym)
+		#lab.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
+		#box.addWidget(lab)
+		lab = QLabel(sym)
+		lab.setStyleSheet('font-size:32px; color:cyan')
 		box.addWidget(lab)
+
 
 		vec = [0,0,0]
 
@@ -1267,9 +1382,10 @@ class BlendWrap:
 class Window(QWidget):
 	def open_code_editor(self, *args):
 		window = ZigZagEditor()
-		window.reset()
+		window.reset(parent=self)
 		window.show()
 		self.megasolid = window
+		self.hide()
 
 	def blendgen(self, sym):
 		if sys.platform=='win32':
@@ -1281,10 +1397,11 @@ class Window(QWidget):
 		subprocess.check_call(cmd)
 
 		window = ZigZagEditor()
-		window.reset()
+		window.reset(parent=self)
 		window.load_blends([out])
 		window.show()
 		self.megasolid = window
+		self.hide()
 
 
 	def thread(self):
@@ -1299,9 +1416,13 @@ class Window(QWidget):
 
 
 	def blender_loop(self):
-		#if self.bstdout:
-		#	if self.sub_vbox.count() > 64:
-		#		self.clear_layout(self.sub_vbox)
+		try:
+			self._blender_loop()
+		except KeyboardInterrupt:
+			print('Ctrl+C exit')
+			sys.exit()
+
+	def _blender_loop(self):
 		for ln in self.bstdout:
 			ln = ln.decode('utf-8')
 			if not ln.strip(): continue
