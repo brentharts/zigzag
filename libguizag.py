@@ -147,9 +147,11 @@ class ZigZagEditor( MegasolidCodeEditor ):
 	CYRILLIC = tuple('Ѐ Ё Ђ Ѓ Є Ї Љ Њ Ћ Ќ Ѝ Ў Џ Б Д Ж И Й Л Ф Ц Ш Щ Ъ Э Ю Я'.split())
 
 	def close(self):
-		print('closing...')
 		self._parent.show()
 		super().close()
+
+	def update_title(self):
+		self.setWindowTitle("%s - ZigZag" % (os.path.basename(self.path) if self.path else "Untitled"))
 
 	def debug_chat(self, msg):
 		if not self._debug_chat:
@@ -261,6 +263,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		act.triggered.connect( self.export_html )
 		self.format_toolbar.addAction(act)
 
+		spacer = QWidget()
+		spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+		self.format_toolbar.addWidget(spacer)
+
 		self._is_fs = False  ## this is only required on Linux/Wayland?
 		self.setFullscreen = QAction("❖", self)
 		self.setFullscreen.setShortcut("F11")
@@ -269,9 +275,6 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.setFullscreen.triggered.connect(self.toggle_fs)
 		self.format_toolbar.addAction(self.setFullscreen)
 
-		spacer = QWidget()
-		spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-		self.format_toolbar.addWidget(spacer)
 
 		self.exit_button = QPushButton("✖")
 		self.exit_button.setToolTip('close window')
@@ -765,9 +768,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if not self.active_blend: return
 		blend = self.active_blend
 		info = self.active_object
-		rthresh = 4
+		rthresh = 5
 		if self._is_fs:
-			rthresh = 8
+			rthresh = 13
 
 		#print(dir(self.materials_layout))
 		clear_layout(self.materials_layout)
@@ -779,39 +782,49 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		sub.setContentsMargins(1,1,1,1)
 		container.setLayout(sub)
 		#sub = self.materials_layout
-		container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+		container.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
 
 		row = []
 		for mat in info['materials']:
 			self.shared_materials[mat['name']] = mat
 
-			box = QVBoxLayout()
+			if self._is_fs:
+				box = QVBoxLayout()
+			else:
+				box = QHBoxLayout()
 			con = QWidget()
-			#con.setFixedHeight(70)
+			if self._is_fs:
+				con.setFixedHeight(60)
+			else:
+				box.setContentsMargins(1,1,1,1)
+				con.setFixedHeight(30)
 			con.setLayout(box)
 			mat['WIDGET'] = con
 			row.append(con)
 
-			lab = QLabel(mat['name'])
-			if self._is_fs:
-				lab.setStyleSheet('font-size:14px')
-			else:
-				lab.setStyleSheet('font-size:10px')
-			box.addWidget(lab)
+			if False:
+				lab = QLabel(mat['name'])
+				if self._is_fs:
+					lab.setStyleSheet('font-size:14px')
+				else:
+					lab.setStyleSheet('font-size:10px')
+				box.addWidget(lab)
 
-			if 'class' in mat:
-				btn = QPushButton(mat['class'])
-				btn.setFixedHeight(16)
-				btn.setFixedWidth(60)
-				btn.setStyleSheet('font-size:8px')
-				box.addWidget(btn)
+				if 'class' in mat and self._is_fs:
+					btn = QPushButton(mat['class'])
+					btn.setFixedHeight(16)
+					btn.setFixedWidth(60)
+					btn.setStyleSheet('font-size:8px')
+					box.addWidget(btn)
 
 			msym = self.material_sym(mat['name'], blend)
 			btn = QPushButton( msym )
+			btn.setToolTip(mat['name'])
 			if self._is_fs:
-				btn.setStyleSheet('font-size:32px')
-				btn.setFixedWidth(50)
+				#btn.setStyleSheet('font-size:22px')
+				btn.setFixedWidth(32)
 			else:
+				#btn.setStyleSheet('font-size:14px')
 				btn.setFixedWidth(32)
 			box.addWidget(btn)
 			btn.clicked.connect(lambda a,s=msym: self.insert_material(s))
@@ -1503,8 +1516,10 @@ LEARN_C3 = [
 """
 .c3.script = '''
 
-fn void onclick( int x, int y ) {
-	
+fn void onclick( int x, int y ) @extern("onclick") @wasm {
+	js_eval(`
+		window.alert("hello click")
+	`);
 }
 
 '''
