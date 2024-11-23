@@ -1568,6 +1568,27 @@ class LearnC3(QWidget):
 		btn = QPushButton('next', self.edit)
 		btn.clicked.connect(lambda b: self.load_random())
 
+	def load(self, tag):
+		tag = os.path.sep + tag
+		clear_layout(self.main_vbox)
+		ok = None
+		for md in self.mds:
+			if md.endswith(tag):
+				ok = md
+				break
+		if ok:
+			self.setWindowTitle(md)
+			md = open(md).read()
+			html = self.parse_md(md)
+			self.edit = edit = QTextEdit()
+			edit.setHtml(html)
+			if self.zoomout:
+				edit.zoomOut(self.zoomout)
+			self.main_vbox.addWidget(edit)
+
+			btn = QPushButton('next', self.edit)
+			btn.clicked.connect(lambda b: self.load_random())
+
 	def parse_md(self, md):
 		o = []
 		in_backticks = False
@@ -1575,7 +1596,7 @@ class LearnC3(QWidget):
 			print(ln)
 			if ln.startswith('title:'):
 				title = ln.split('title:')[-1].strip()
-				o.append('<h1>Example: %s</h1>' % title)
+				o.append('<h2>Example: %s</h2>' % title)
 				continue
 			elif ln.strip()=='---':
 				o.append('<hr/>')
@@ -1589,7 +1610,7 @@ class LearnC3(QWidget):
 					o.append('<pre style="background-color:lightgray">')
 				continue
 			elif ln.startswith('- '):
-				o.append('<span style="font-size:20px">•%s</span>' % ln)
+				o.append('<span style="font-size:18px">•%s</span>' % ln)
 				continue
 			elif ln.startswith('weight:'):
 				continue
@@ -1607,7 +1628,7 @@ class LearnC3(QWidget):
 							code = code[1:-2]
 						code = code.replace('\\"', '"')
 						code = code.replace('<', '&lt;').replace('>', '&gt;')
-						o.append('<h1>C3 Code:</h1><pre>%s</pre>' % code)
+						o.append('<h3>C3 Code:</h3><pre>%s</pre>' % code)
 				continue
 			if in_backticks and ln.startswith('//'):
 				o.append('<i style="font-size:16px; background-color:gray; color:white">%s</i>' % ln)
@@ -1633,6 +1654,8 @@ class Window(QWidget):
 	def learn_c3(self):
 		w = self.blendgen("🐵")
 		w.editor.textCursor().insertText(choice(LEARN_C3).strip())
+		learn_wasm = ['wasm1.md', 'wasm2.md', 'wasm3.md']
+		w.learn_c3_widget.load(choice(learn_wasm))
 
 	def blendgen(self, sym):
 		if sys.platform=='win32':
