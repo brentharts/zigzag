@@ -1,5 +1,5 @@
 import os, sys, subprocess, atexit, string, math, hashlib
-from random import random, uniform
+from random import random, uniform, choice
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 try:
@@ -869,10 +869,11 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		user_vars = list(string.ascii_letters)
 		user_vars.reverse()
 		cur = self.editor.textCursor()
-		for blend in blends:
+		for i,blend in enumerate(blends):
 			#cur.insertText('%s = ' % user_vars.pop())
 			self.on_new_blend(blend)
-			cur.insertText('\n')
+			if i != len(blends)-1:
+				cur.insertText('\n')
 
 	def run_script(self, *args, **kw):
 		export = kw.get('export',None)
@@ -1488,6 +1489,20 @@ class BlendWrap:
 '''
 
 
+LEARN_C3 = [
+"""
+.c3.script = '''
+
+fn void onclick( int x, int y ) {
+	
+}
+
+'''
+
+""",
+
+]
+
 class Window(QWidget):
 	def open_code_editor(self, *args):
 		window = ZigZagEditor()
@@ -1495,6 +1510,10 @@ class Window(QWidget):
 		window.show()
 		self.megasolid = window
 		self.hide()
+
+	def learn_c3(self):
+		w = self.blendgen("🐵")
+		w.editor.textCursor().insertText(choice(LEARN_C3).strip())
 
 	def blendgen(self, sym):
 		if sys.platform=='win32':
@@ -1504,13 +1523,13 @@ class Window(QWidget):
 		cmd = [self.blenders[-1], '--background', '--python-exit-code', '1', '--python', os.path.join(_thisdir,'libgenzag.py'), '--', '--generate=%s' % sym, '--out='+out]
 		print(cmd)
 		subprocess.check_call(cmd)
-
 		window = ZigZagEditor()
 		window.reset(parent=self)
 		window.load_blends([out])
 		window.show()
 		self.megasolid = window
 		self.hide()
+		return window
 
 
 	def thread(self):
@@ -1813,6 +1832,11 @@ class Window(QWidget):
 
 		self.main_vbox.addStretch(1)
 
+		c3btn = QPushButton('',self)
+		c3btn.setIcon(QIcon(os.path.join(_thisdir,'C3-button.png')))
+		c3btn.setIconSize( QSize(105,60) )
+		c3btn.clicked.connect(lambda e:self.learn_c3() )
+
 		btn = QPushButton('Blender')
 		btn.setIcon(QIcon(os.path.join(_thisdir,'Blender-button.png')))
 		btn.setIconSize( QSize(59,50) )
@@ -1822,6 +1846,7 @@ class Window(QWidget):
 		button_cancel.clicked.connect(sys.exit)
 
 		hbox = QHBoxLayout()
+		hbox.addWidget(c3btn)
 		hbox.addStretch(1)
 		hbox.addWidget(btn)
 		hbox.addWidget(button_cancel)
