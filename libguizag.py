@@ -71,7 +71,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 		]
 		subprocess.check_call(cmd)
 
-	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy, QLayout
+	from PySide6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy, QLayout, QTextEdit
 	from PySide6.QtCore import QTimer, Qt, QSize
 	from PySide6.QtGui import (
 		QFont,
@@ -83,7 +83,7 @@ if sys.platform=='win32' or sys.platform=='darwin':
 	)
 
 else:
-	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy, QLayout
+	from PyQt6.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame, QToolTip, QLineEdit, QSlider, QSizePolicy, QLayout, QTextEdit
 	from PyQt6.QtCore import QTimer, Qt, QSize
 	from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -194,6 +194,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.materials_container.setLayout(self.materials_layout)
 			layout.addWidget(self.materials_container)
 			#layout.addLayout(self.materials_layout)
+
+			self.learn_c3_widget = LearnC3(zoomout=3)
+			self.learn_c3_widget.setStyleSheet('background-color:white; color:black')
+			layout.addWidget(self.learn_c3_widget)
 
 		else:
 			self.glview = None
@@ -308,7 +312,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self._is_fs = True
 			if self.glview:
 				self.glview.setFixedWidth(700)
-				self.glview.setFixedHeight(700)
+				self.glview.setFixedHeight(600)
 			self.update_active_materials()
 
 	def clear_object_popup(self):
@@ -1509,18 +1513,25 @@ fn void onclick( int x, int y ) {
 
 ]
 class LearnC3(QWidget):
-	def __init__(self):
+	def __init__(self, zoomout=0):
 		super().__init__()
+		self.zoomout = zoomout
 		self.resize(640, 700)
 		self.setWindowTitle('Learn C3')
 		self.main_vbox = vbox = QVBoxLayout()
-		# Add vertical layout to window
 		self.setLayout(self.main_vbox)
 		self.mds = []
 		path = os.path.join(C3_LEARN, 'old/content/Basics')
 		for md in os.listdir(path):
 			if md.endswith('.md'):
-				print(md)
+				self.mds.append( os.path.join(path, md) )
+		path = os.path.join(C3_LEARN, 'old/content/More')
+		for md in os.listdir(path):
+			if md.endswith('.md'):
+				self.mds.append( os.path.join(path, md) )
+		path = os.path.join(C3_LEARN, 'old/content/Try')
+		for md in os.listdir(path):
+			if md.endswith('.md'):
 				self.mds.append( os.path.join(path, md) )
 
 		self.load_random()
@@ -1530,17 +1541,40 @@ class LearnC3(QWidget):
 		clear_layout(self.main_vbox)
 		md = choice(self.mds)
 		print('loading:', md)
+		self.setWindowTitle(md)
 		md = open(md).read()
-		rtf = self.parse_md(md)
-		lab = QLabel(rtf)
-		self.main_vbox.addWidget(lab)
+		html = self.parse_md(md)
+		self.edit = edit = QTextEdit()
+		edit.setHtml(html)
+		if self.zoomout:
+			edit.zoomOut(self.zoomout)
+		self.main_vbox.addWidget(edit)
+
+		btn = QPushButton('next', self.edit)
+		btn.clicked.connect(lambda b: self.load_random())
 
 	def parse_md(self, md):
 		o = []
+		in_backticks = False
 		for ln in md.splitlines():
 			print(ln)
 			if ln.startswith('title:'):
-				self.setWindowTitle(ln.split('title:')[-1].strip())
+				title = ln.split('title:')[-1].strip()
+				o.append('<h1>Example: %s</h1>' % title)
+				continue
+			elif ln.strip()=='---':
+				o.append('<hr/>')
+				continue
+			elif ln.strip()=='```':
+				if in_backticks:
+					in_backticks = False
+					o.append('</pre>')
+				else:
+					in_backticks = True
+					o.append('<pre style="background-color:lightgray">')
+				continue
+			elif ln.startswith('- '):
+				o.append('<span style="font-size:20px">•%s</span>' % ln)
 				continue
 			elif ln.startswith('weight:'):
 				continue
@@ -1553,10 +1587,20 @@ class LearnC3(QWidget):
 				for hl in open(html).read().splitlines():
 					if hl.strip().startswith('let defcod'):
 						code = hl[ hl.index('=')+1 : ].strip()
-						code = code.replace('\\t', '\t').replace('\\n', '<br/>')
-						o.append('<code>%s</code>' % code)
+						code = code.replace('\\t', '\t').replace('\\n', '\n')
+						if code.startswith('"') and code.endswith('";'):
+							code = code[1:-2]
+						code = code.replace('\\"', '"')
+						code = code.replace('<', '&lt;').replace('>', '&gt;')
+						o.append('<h1>C3 Code:</h1><pre>%s</pre>' % code)
 				continue
-			o.append(ln)
+			if in_backticks and ln.startswith('//'):
+				o.append('<i style="font-size:16px; background-color:gray; color:white">%s</i>' % ln)
+			elif in_backticks and ln.count('//')==1:
+				a,b = ln.split('//')
+				o.append('%s\t\t<i style="font-size:12px; background-color:gray; color:white">//%s</i>' % (a,b))
+			else:
+				o.append(ln)
 		return '<br/>'.join(o)
 
 
