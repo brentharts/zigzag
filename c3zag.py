@@ -298,6 +298,7 @@ C3_ZAG_INIT = '''
 	reset(wasm,id,bytes){
 		this.wasm=wasm;
 		this.canvas=document.getElementById(id);
+		this.canvas.onclick=this.onclick.bind(this);
 		this.gl=this.canvas.getContext('webgl');
 		this.gl.getExtension("OES_standard_derivatives");
 		this.bufs=[];
@@ -308,6 +309,11 @@ C3_ZAG_INIT = '''
 		//this.mods=[{op:"mod_rand",value:0.1}];
 		this.mods=[];
 		this.wasm.instance.exports.main();
+	}
+
+	onclick(e){
+		console.log("onclick:", e);
+		this.wasm.instance.exports.onclick(e.x,e.y)
 	}
 
 '''
@@ -842,6 +848,11 @@ def blender_to_c3(world, use_vertex_colors=False):
 	for ob in bpy.data.objects:
 		if ob.hide_get(): continue
 		sname = zigzag.safename(ob)
+		if ob.name not in bpy.context.view_layer.objects:
+			print('C3 export skip:', ob)  ## this can happen when linking a .blend and child is missing parent
+			continue
+		else:
+			print('C3 export:', ob)
 
 		if ob.type=='MESH':
 
