@@ -25,13 +25,19 @@ except:
 
 MEGASOLID = os.path.join(_thisdir,'pyqt6-rich-text-editor')
 if MEGASOLID not in sys.path: sys.path.append(MEGASOLID)
-
 def ensure_megasolid():
 	if not os.path.isdir(MEGASOLID):
 		cmd = 'git clone --depth 1 https://github.com/brentharts/pyqt6-rich-text-editor.git'
 		print(cmd)
 		subprocess.check_call(cmd.split())
 ensure_megasolid()
+C3_LEARN = os.path.join(_thisdir,'c3-learn')
+def ensure_c3_learn():
+	if not os.path.isdir(C3_LEARN):
+		cmd = 'git clone --depth 1 https://github.com/brentharts/c3-learn.git'
+		print(cmd)
+		subprocess.check_call(cmd.split())
+ensure_c3_learn()
 
 
 if os.path.isdir(MEGASOLID):
@@ -1502,6 +1508,60 @@ fn void onclick( int x, int y ) {
 """,
 
 ]
+class LearnC3(QWidget):
+	def __init__(self):
+		super().__init__()
+		self.resize(640, 700)
+		self.setWindowTitle('Learn C3')
+		self.main_vbox = vbox = QVBoxLayout()
+		# Add vertical layout to window
+		self.setLayout(self.main_vbox)
+		self.mds = []
+		path = os.path.join(C3_LEARN, 'old/content/Basics')
+		for md in os.listdir(path):
+			if md.endswith('.md'):
+				print(md)
+				self.mds.append( os.path.join(path, md) )
+
+		self.load_random()
+		self.show()
+
+	def load_random(self):
+		clear_layout(self.main_vbox)
+		md = choice(self.mds)
+		print('loading:', md)
+		md = open(md).read()
+		rtf = self.parse_md(md)
+		lab = QLabel(rtf)
+		self.main_vbox.addWidget(lab)
+
+	def parse_md(self, md):
+		o = []
+		for ln in md.splitlines():
+			print(ln)
+			if ln.startswith('title:'):
+				self.setWindowTitle(ln.split('title:')[-1].strip())
+				continue
+			elif ln.startswith('weight:'):
+				continue
+			elif ln.startswith('{{<start>}}'):
+				continue
+			elif ln.startswith('{{<end'):
+				n = int(ln.split('{{<end')[-1].split('>')[0])
+				html = os.path.join(C3_LEARN, 'old/layouts/shortcodes/end%s.html' % n)
+				assert os.path.isfile(html)
+				for hl in open(html).read().splitlines():
+					if hl.strip().startswith('let defcod'):
+						code = hl[ hl.index('=')+1 : ].strip()
+						code = code.replace('\\t', '\t').replace('\\n', '<br/>')
+						o.append('<code>%s</code>' % code)
+				continue
+			o.append(ln)
+		return '<br/>'.join(o)
+
+
+
+
 
 class Window(QWidget):
 	def open_code_editor(self, *args):
@@ -1886,6 +1946,10 @@ if __name__=='__main__':
 		app.setApplicationName("Megasolid ZigZag")
 		window = codeeditor.MegasolidCodeEditor()
 		window.reset()
+		app.exec()
+	elif '--learn-c3' in sys.argv:
+		app = QApplication(sys.argv)
+		window = LearnC3()
 		app.exec()
 	else:
 		main()
