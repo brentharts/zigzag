@@ -145,9 +145,27 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self._parent.show()
 		super().close()
 
+	def debug_chat(self, msg):
+		if not self._debug_chat:
+			self._debug_chat_bubble = lab = ClickLabel('🗨', self.glview)
+			lab.onclicked=lambda e:lab.hide()
+			lab.setStyleSheet('font-size:128px; background-color:rgba(0,0,0,0)')
+			self._debug_chat = chat = QLabel('', lab)
+			chat.setStyleSheet('font-size:22px; color:black')
+			chat.move(20,70)
+		if len(msg) > 22:
+			msg = msg[:20] + '...'
+		self._debug_chat.setText(msg)
+		self._debug_chat_bubble.show()
+
+	def hide_debug_chat(self):
+		if self._debug_chat:
+			self._debug_chat_bubble.hide()
+
 	def reset(self, parent=None):
 		self._parent=parent
 		alt_widget = None
+		self._debug_chat = None
 		if libglzag:
 			self.glview = libglzag.Viewer(width=300,height=300)
 
@@ -208,7 +226,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 		self.popup = pop = ClickLabel(self)
 		pop.setText("hello popup")
-		pop.setStyleSheet('background-color:black; color:lightgreen; font-size:20px')
+		pop.setStyleSheet('background-color:black; color:lightgreen; font-size:28px')
 		pop.move(400,50)
 		#pop.show()
 		pop.onclicked = lambda evt: pop.hide()
@@ -346,13 +364,28 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		res = subprocess.run(cmd, capture_output=True, text=True)
 		#print(res)
 		if res.returncode != 0:
-			print('COMPILE ERROR!')
-			print(res.stdout)  ## this should be nothing?
-			print(res.stderr)  ## error message from c3c
-			self.parse_c3_error(res.stderr + res.stdout)
+			print('ZIG COMPILE ERROR!')
+			print(res.stdout)
+			print(res.stderr)
+			self.parse_zig_error(res.stderr + res.stdout)
 		else:
-			self.popup.setText('🆗')
+			self.popup.setText('ZIG COMPILE 🆗')
 			self.popup.adjustSize()
+
+	def parse_zig_error(self, err, line_offset=0):
+		o = []
+		for ln in err.splitlines():
+			if '__tmp__.zig:':
+				ln = ln.split('__tmp__.zig:')[-1]
+				if ln.count(': error:')==1:
+					ln = '<b>Error:</b>' + ln.split(': error:')[-1]
+			o.append(ln)
+		if self._prev_err != err:
+			self._prev_err = err
+			msg = '<br/>'.join(o)
+			self.popup.setText(msg)
+			self.popup.adjustSize()
+			self.popup.show()
 
 
 	def parse_c3(self, c3):
@@ -361,7 +394,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self._prev_test = c3
 
 		tmp = '/tmp/__tmp__.c3'
-		open(tmp,'wb').write(c3.encode('utf-8'))
+		header_lines = len(C3_EXTERNS.splitlines())
+		open(tmp,'wb').write( (C3_EXTERNS+c3).encode('utf-8'))
 		cmd = [
 			C3, 
 			#'-E', ## lex only
@@ -374,29 +408,54 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		res = subprocess.run(cmd, capture_output=True, text=True)
 		#print(res)
 		if res.returncode != 0:
-			print('COMPILE ERROR!')
+			print('C3 COMPILE ERROR!')
 			print(res.stdout)  ## this should be nothing?
 			print(res.stderr)  ## error message from c3c
-			self.parse_c3_error(res.stderr + res.stdout)
+			self.parse_c3_error(res.stderr + res.stdout, line_offset=header_lines)
 		else:
-			self.popup.setText('🆗')
+			self.popup.setText('C3 COMPILE 🆗')
 			self.popup.adjustSize()
+			self.hide_debug_chat()
 
-	def parse_c3_error(self, err):
+	def parse_c3_error(self, err, line_offset=0):
 		error_lines = []
 		error_messages = []
+		paren_messages = []
 		for ln in err.splitlines():
-			if ':' in ln and ln.split(':')[0].isdigit():
-				lineno = int(ln.split(':')[0])
+			if ':' in ln and ln.split(':')[0].strip().isdigit():
+				lineno = int(ln.split(':')[0].strip())
+				if lineno - line_offset <= 0:
+					continue
+				ln = '%s :%s' % (lineno-line_offset, ln.split(':')[-1] )
 				error_lines.append(ln)
-			elif ln.startswith('Error:'):
-				error_messages.append(ln)
+			elif '^' in ln and ln.startswith(' '):
+				error_lines.append(ln.replace(' ', '-'))
+			elif ln.startswith('(') and '__tmp__.c3:' in ln:
+				ln = ln.split('__tmp__.c3:')[-1]
+				if ')' in ln:
+					ln = ln[ ln.index(')')+1 : ].strip()
+				if '(' in ln and ')' in ln and ln.count('(')==1:
+					a,b = ln.split('(')
+					p,c = (b+' ').split(')')
+					ln = a + c
+					paren_messages.append('<i>(%s)</i>' % p)
+
+				if ln.startswith('Error:'):
+					self.debug_chat('C3 Error!')
+					ln = ln.replace('Error:', '<b>Error:</b>')
+
+				if ', ' in ln:
+					error_messages += ln.split(', ')
+				else:
+					error_messages.append(ln)
 
 		print(error_lines)
 		print(error_messages)
+		print(paren_messages)
 		if self._prev_err != err:
 			self._prev_err = err
-			self.popup.setText(err)
+			msg = '<br/>'.join(error_lines + error_messages + paren_messages)
+			self.popup.setText(msg)
 			self.popup.adjustSize()
 			self.popup.show()
 
@@ -413,7 +472,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				if ln == "'''":
 					if c3_script[0].endswith('{'):
 						c3_script.append('}')  ## end of wrapper function __object_script__
-					c3_script.append(C3_EXTERNS)
+					#c3_script.append(C3_EXTERNS)
 					self.parse_c3( '\n'.join(c3_script) )
 					c3_script = None
 				else:
@@ -422,7 +481,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				if ln == "'''":
 					if zig_script[0].endswith('{'):
 						zig_script.append('}')
-					zig_script.append(ZIG_EXTERNS)
+					zig_script.insert(0,ZIG_EXTERNS)
 					self.parse_zig( '\n'.join(zig_script) )
 					zig_script = None
 				else:
