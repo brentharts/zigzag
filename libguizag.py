@@ -151,11 +151,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			lab.onclicked=lambda e:lab.hide()
 			lab.setStyleSheet('font-size:128px; background-color:rgba(0,0,0,0)')
 			self._debug_chat = chat = QLabel('', lab)
-			chat.setStyleSheet('font-size:22px; color:black')
-			chat.move(20,70)
-		if len(msg) > 22:
-			msg = msg[:20] + '...'
+			chat.setStyleSheet('font-size:20px; color:black')
+			chat.move(16,66)
+		if len(msg) > 32:
+			msg = msg[:30] + '...'
 		self._debug_chat.setText(msg)
+		self._debug_chat.adjustSize()
 		self._debug_chat_bubble.show()
 
 	def hide_debug_chat(self):
@@ -163,6 +164,8 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self._debug_chat_bubble.hide()
 
 	def reset(self, parent=None):
+		self.c3_funcs = {}
+		self.zig_funcs = {}
 		self._parent=parent
 		alt_widget = None
 		self._debug_chat = None
@@ -348,13 +351,18 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			sys.exit()
 
 
-	def parse_zig(self, zig):
+	def parse_zig(self, zig, world_script=None):
 		if not ZIG: return
 		if zig == self._prev_test: return
 		self._prev_test = zig
 
+		header = ZIG_EXTERNS
+		if world_script:
+			header += world_script
+		header_lines = len(header.splitlines())
+
 		tmp = '/tmp/__tmp__.zig'
-		open(tmp,'wb').write(zig.encode('utf-8'))
+		open(tmp,'wb').write( (header + zig).encode('utf-8'))
 		cmd = [
 			ZIG, 
 			'ast-check',
@@ -367,7 +375,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			print('ZIG COMPILE ERROR!')
 			print(res.stdout)
 			print(res.stderr)
-			self.parse_zig_error(res.stderr + res.stdout)
+			self.parse_zig_error(res.stderr + res.stdout, line_offset=header_lines)
 		else:
 			self.popup.setText('ZIG COMPILE 🆗')
 			self.popup.adjustSize()
@@ -388,14 +396,31 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.popup.show()
 
 
-	def parse_c3(self, c3):
-		if not C3: return
-		if c3 == self._prev_test: return
+	def check_c3(self, c3):
+		for ln in c3.splitlines():
+			ln = ln.strip()
+			if ln.startswith('fn '):
+				ln = ln[3:].strip()
+				if '(' in ln:
+					a = ln.split('(')[0].strip()
+					if len(a.split()) == 2:
+						rtype, fname = a.split()
+						if fname not in self.c3_funcs:
+							self.c3_funcs[fname] = rtype
+							self.debug_chat('new function:\n'+fname)
+
+
+	def parse_c3(self, c3, world_script=None):
+		if not C3: return -2
+		if c3 == self._prev_test: return -1
 		self._prev_test = c3
 
 		tmp = '/tmp/__tmp__.c3'
-		header_lines = len(C3_EXTERNS.splitlines())
-		open(tmp,'wb').write( (C3_EXTERNS+c3).encode('utf-8'))
+		header = C3_EXTERNS
+		if world_script:
+			header += world_script
+		header_lines = len(header.splitlines())
+		open(tmp,'wb').write( (header+c3).encode('utf-8'))
 		cmd = [
 			C3, 
 			#'-E', ## lex only
@@ -412,10 +437,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			print(res.stdout)  ## this should be nothing?
 			print(res.stderr)  ## error message from c3c
 			self.parse_c3_error(res.stderr + res.stdout, line_offset=header_lines)
+			return 0
 		else:
 			self.popup.setText('C3 COMPILE 🆗')
 			self.popup.adjustSize()
 			self.hide_debug_chat()
+			return 1
 
 	def parse_c3_error(self, err, line_offset=0):
 		error_lines = []
@@ -465,6 +492,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		c3_script = zig_script = None  ## multi-line strings with c3 or zig code
 		c3_scripts = {}
 		zig_scripts = {}
+		c3_world_script = None
+		zig_world_script = None
+
 		txt = self.editor.toPlainText()
 		updates = 0
 		for ln in txt.splitlines():
@@ -472,8 +502,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				if ln == "'''":
 					if c3_script[0].endswith('{'):
 						c3_script.append('}')  ## end of wrapper function __object_script__
-					#c3_script.append(C3_EXTERNS)
-					self.parse_c3( '\n'.join(c3_script) )
+						self.parse_c3( '\n'.join(c3_script), world_script=c3_world_script )
+					else:
+						c3_world_script = '\n'.join(c3_script)
+						if self.parse_c3( c3_world_script ):
+							self.check_c3(c3_world_script)
+
 					c3_script = None
 				else:
 					c3_script.append(ln)
@@ -481,8 +515,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				if ln == "'''":
 					if zig_script[0].endswith('{'):
 						zig_script.append('}')
-					zig_script.insert(0,ZIG_EXTERNS)
-					self.parse_zig( '\n'.join(zig_script) )
+						self.parse_zig( '\n'.join(zig_script), world_script=zig_world_script )
+					else:
+						zig_world_script = '\n'.join(zig_script)
+						self.parse_zig(zig_world_script)
 					zig_script = None
 				else:
 					zig_script.append(ln)
