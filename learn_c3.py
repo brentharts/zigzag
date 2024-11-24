@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys
+import os, sys, subprocess
 from random import choice
 
 if sys.platform=='win32' or sys.platform=='darwin':
