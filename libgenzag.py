@@ -26,6 +26,15 @@ class _wrap_zig:
 			txt.from_string(value)
 			self.ob.zig_script = txt
 
+class _wrap_rust:
+	def __init__(self, ob):
+		self.__dict__['ob'] = ob
+	def __setattr__(self, name, value):
+		if name=='script':
+			txt = bpy.data.texts.new(name=name+'.rs')
+			txt.from_string(value)
+			self.ob.rust_script = txt
+
 def _get_rot(self):
 	return [math.degrees(a) for a in self.rotation_euler]
 
@@ -54,12 +63,16 @@ if bpy:
 
 	bpy.types.World.c3_script = bpy.props.PointerProperty(name="C3 global script", type=bpy.types.Text)
 	bpy.types.World.zig_script = bpy.props.PointerProperty(name="Zig global script", type=bpy.types.Text)
+	bpy.types.World.rust_script = bpy.props.PointerProperty(name="Rust global script", type=bpy.types.Text)
 
 	bpy.types.Object.c3 = lambda s: _wrap_c3(s)
 	bpy.types.Object.c3_script = bpy.props.PointerProperty(name="C3 object script", type=bpy.types.Text)
 
 	bpy.types.Object.zig = lambda s: _wrap_zig(s)
 	bpy.types.Object.zig_script = bpy.props.PointerProperty(name="Zig object script", type=bpy.types.Text)
+
+	bpy.types.Object.rust = lambda s: _wrap_rust(s)
+	bpy.types.Object.rust_script = bpy.props.PointerProperty(name="Rust object script", type=bpy.types.Text)
 
 	bpy.types.Material.zigzag_object_type = bpy.props.EnumProperty(
 		name='type',
