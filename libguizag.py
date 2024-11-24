@@ -9,6 +9,8 @@ except ModuleNotFoundError as err:
 	print('WARN: failed to import libglzag')
 	print(err)
 	libglzag = None
+
+rustzagpy = os.path.join(_thisdir, 'rustzag.py')
 zigzagpy = os.path.join(_thisdir, 'zigzag.py')
 c3zagpy = os.path.join(_thisdir, 'c3zag.py')
 
@@ -315,7 +317,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self._is_fs = True
 			if self.glview:
 				self.glview.setFixedWidth(700)
-				self.glview.setFixedHeight(600)
+				self.glview.setFixedHeight(500)
 			self.update_active_materials()
 
 	def clear_object_popup(self):
@@ -910,7 +912,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		py = []
 		blends = []
 
-		has_c3 = has_zig = False
+		has_c3 = has_zig = has_rust = False
+		if '.rust.script' in txt:
+			txt = txt.replace('.rust.script','.rust().script')
+			has_rust = True
 		if '.zig.script' in txt:
 			txt = txt.replace('.zig.script','.zig().script')
 			has_zig = True
@@ -986,7 +991,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			cmd.append('--background')
 		else:
 			cmd += ['--window-geometry','640','100', '800','800']
-		if has_zig:
+
+		if has_rust:
+			cmd += ['--python', rustzagpy, '--', '--import='+tmp ]
+		elif has_zig:
 			cmd += ['--python', zigzagpy, '--', '--import='+tmp ]
 		else:
 			cmd += ['--python', c3zagpy, '--', '--import='+tmp ]
@@ -1504,6 +1512,17 @@ class BlendWrap:
 					txt.from_string(value)
 					self.ob.zig_script = txt
 		return _wrap_zig(bpy.data.worlds[0])
+
+	def rust(self):
+		class _wrap_rust:
+			def __init__(self, ob):
+				self.__dict__['ob'] = ob
+			def __setattr__(self, name, value):
+				if name=='script':
+					txt = bpy.data.texts.new(name=name+'.rs')
+					txt.from_string(value)
+					self.ob.rust_script = txt
+		return _wrap_rust(bpy.data.worlds[0])
 
 	def add(self, ob):
 		bpy.data.scenes[0].collection.objects.link(ob)
