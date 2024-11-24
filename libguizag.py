@@ -168,6 +168,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self._debug_chat_bubble.hide()
 
 	def reset(self, parent=None):
+		self._c3_errors = {}
 		self.c3_funcs = {}
 		self.zig_funcs = {}
 		self._parent=parent
@@ -495,6 +496,17 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.popup.adjustSize()
 			self.popup.show()
 
+			if err not in self._c3_errors:
+				self.c3_search_for_help(err, error_messages, paren_messages)
+
+	def c3_search_for_help(self, err, error_messages, paren_messages):
+		help = {}
+		self._c3_errors[err] = help
+		a = ' '.join(error_messages).lower()
+		a = a.replace('error', '')  ## otherwise all searches just return the doc on Error Handlers
+		md = self.learn_c3_widget.search(a)
+		if md and md not in help:
+			help[md] = a
 
 	def com_loop(self):
 		scope = {'random':random, 'uniform':uniform, 'math':math}
@@ -1556,7 +1568,7 @@ class Window(QWidget):
 		w = self.blendgen("🐵")
 		w.editor.textCursor().insertText(choice(LEARN_C3).strip())
 		learn_wasm = ['wasm1.md', 'wasm2.md', 'wasm3.md']
-		w.learn_c3_widget.load(choice(learn_wasm))
+		w.learn_c3_widget.load(tag=choice(learn_wasm))
 
 	def blendgen(self, sym):
 		if sys.platform=='win32':
