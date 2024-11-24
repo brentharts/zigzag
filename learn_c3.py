@@ -84,17 +84,17 @@ class LearnC3(QWidget):
 		btn = QPushButton('next', self.edit)
 		btn.clicked.connect(lambda b: self.load_random())
 
-	def load(self, tag):
-		tag = os.path.sep + tag
+	def load(self, md=None, tag=None, path=None):
 		clear_layout(self.main_vbox)
-		ok = None
-		for md in self.mds:
-			if md.endswith(tag):
-				ok = md
-				break
-		if ok:
-			self.setWindowTitle(md)
-			md = open(md).read()
+		if tag:
+			tag = os.path.sep + tag
+			for m in self.mds:
+				if m.endswith(tag):
+					md = open(m).read()
+					break
+		elif path:
+			md = open(path).read()
+		if md:
 			html = self.parse_md(md)
 			self.edit = edit = QTextEdit()
 			edit.setHtml(html)
@@ -155,7 +155,55 @@ class LearnC3(QWidget):
 				o.append(ln)
 		return '<br/>'.join(o)
 
+	def search(self, s):
+		words = s.lower().split()
+		print('search:', words)
+		ranks = {}
+		for md in self.mds:
+			txt = open(md).read().lower()
+			txt = txt.replace('`', '')
+			#print(txt)
+			score = 0
+			for ln in txt.splitlines():
+				if ln.strip().startswith('title:'):
+					title = ln.split('title:')[-1].strip()
+					if title.startswith('"') and title.endswith('"'):
+						title = title[1:-1]
+					title = title.strip()
+					print('TITLE:', title)
+					title = title.split()
+					for word in words:
+						score += title.count(word) * 10
+			txt = txt.split()
+			for word in words:
+				score += txt.count(word)
+
+			if score not in ranks:
+				ranks[score] = []
+
+			ranks[score].append(md)
+
+		scores = list(ranks.keys())
+		scores.sort()
+		scores.reverse()
+		best = None
+		for score in scores:
+			if not score: break
+			mds = ranks[score]
+			print('rank %s:' % score)
+			for md in mds:
+				print('	%s' % os.path.split(md)[-1])
+				if best is None:
+					best = md
+		if best:
+			self.load(path=best)
+
+
 if __name__=='__main__':
-		app = QApplication(sys.argv)
-		window = LearnC3()
-		sys.exit( app.exec() )
+	app = QApplication(sys.argv)
+	window = LearnC3()
+	for arg in sys.argv:
+		if arg.startswith('--search='):
+			window.search(arg.split('=')[-1])
+
+	sys.exit( app.exec() )
