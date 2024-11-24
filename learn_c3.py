@@ -158,6 +158,12 @@ class LearnC3(QWidget):
 	def search(self, s):
 		words = s.lower().split()
 		print('search:', words)
+		rem = 'a the this is not name <b>:</b> <br/> : -'.split()
+		for r in rem:
+			if r in words:
+				words.remove(r)
+		print('SEARCH:', words)
+
 		ranks = {}
 		for md in self.mds:
 			txt = open(md).read().lower()
@@ -197,6 +203,7 @@ class LearnC3(QWidget):
 					best = md
 		if best:
 			self.load(path=best)
+			return best
 
 
 if __name__=='__main__':
