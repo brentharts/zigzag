@@ -419,6 +419,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if self._prev_err != err:
 			self._prev_err = err
 			msg = '<br/>'.join(o)
+			self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:28px')
 			self.popup.setText(msg)
 			self.popup.adjustSize()
 			self.popup.show()
@@ -512,6 +513,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if self._prev_err != err:
 			self._prev_err = err
 			msg = '<br/>'.join(error_lines + error_messages + paren_messages)
+			self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:28px')
 			self.popup.setText(msg)
 			self.popup.adjustSize()
 			self.popup.show()
@@ -1036,7 +1038,20 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if export:
 			cmd.append('--export='+export)
 		print(cmd)
-		subprocess.check_call(cmd)
+		#subprocess.check_call(cmd)
+		res = subprocess.run(cmd, capture_output=True, text=True)
+		if res.returncode != 0:
+			print('COMPILE ERROR!')
+			print(res.stdout)
+			print(res.stderr)
+			self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:10px')
+			if res.stderr.strip():
+				self.popup.setText(res.stderr)
+			else:
+				self.popup.setText(res.stdout)
+			self.popup.adjustSize()
+			self.popup.show()
+
 
 	def export_html(self, *args):
 		#tmp = '/tmp/zigzag-preview.html'
