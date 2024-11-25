@@ -174,6 +174,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self._parent=parent
 		alt_widget = None
 		self._debug_chat = None
+		self._show_learn_c3 = True
 		if libglzag:
 			self.glview = libglzag.Viewer(width=300,height=300)
 
@@ -272,17 +273,33 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.setFullscreen.triggered.connect(self.toggle_fs)
 		self.format_toolbar.addAction(self.setFullscreen)
 
+		self.help_button = QPushButton("?")
+		self.help_button.setFixedWidth(32)
+		self.help_button.setToolTip('show/hide help')
+		self.help_button.clicked.connect(self.toggle_help)
+		self.format_toolbar.addWidget(self.help_button)
+
 
 		self.exit_button = QPushButton("✖")
 		self.exit_button.setToolTip('close window')
 		self.exit_button.clicked.connect(lambda:self.close())
 		self.format_toolbar.addWidget(self.exit_button)
 
+	def toggle_help(self):
+		if self._show_learn_c3:
+			self.learn_c3_widget.hide()
+			self._show_learn_c3 = False
+		else:
+			self._show_learn_c3 = True
+			self.learn_c3_widget.show()
+
 	def toggle_fs(self):
 		if self.isFullScreen() or (sys.platform=='linux' and self._is_fs):
 			self.editor.zoomOut(8)
 			#self.exit_button.hide()
 			self._is_fs = False
+
+			self.popup.move(400,50)
 
 			if self.glview:
 				self.glview.setFixedWidth(300)
@@ -306,6 +323,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				self.resize(900,600)
 
 		else:
+			self.popup.move(400,350)
 			self.editor.zoomIn(8)
 			self.exit_button.show()
 			self.showFullScreen()
@@ -458,6 +476,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		error_lines = []
 		error_messages = []
 		paren_messages = []
+		errors_raw = []
 		for ln in err.splitlines():
 			if ':' in ln and ln.split(':')[0].strip().isdigit():
 				lineno = int(ln.split(':')[0].strip())
@@ -471,6 +490,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				ln = ln.split('__tmp__.c3:')[-1]
 				if ')' in ln:
 					ln = ln[ ln.index(')')+1 : ].strip()
+				errors_raw.append(ln.strip())
 				if '(' in ln and ')' in ln and ln.count('(')==1:
 					a,b = ln.split('(')
 					p,c = (b+' ').split(')')
@@ -486,9 +506,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				else:
 					error_messages.append(ln)
 
-		print(error_lines)
-		print(error_messages)
-		print(paren_messages)
+		#print(error_lines)
+		#print(error_messages)
+		#print(paren_messages)
 		if self._prev_err != err:
 			self._prev_err = err
 			msg = '<br/>'.join(error_lines + error_messages + paren_messages)
@@ -497,16 +517,25 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.popup.show()
 
 			if err not in self._c3_errors:
-				self.c3_search_for_help(err, error_messages, paren_messages)
+				print(errors_raw)
+				self.c3_search_for_help(err, errors_raw, paren_messages)
 
+	C3_ERROR_HELP = {
+		"Error: Expected ';'"					: 'syntax-error1.md',
+		"Error: Expected the ending ')' here."  : 'syntax-error2.md',  ## this happens for func calls missing )
+	}
 	def c3_search_for_help(self, err, error_messages, paren_messages):
 		help = {}
 		self._c3_errors[err] = help
-		a = ' '.join(error_messages).lower()
-		a = a.replace('error', '')  ## otherwise all searches just return the doc on Error Handlers
-		md = self.learn_c3_widget.search(a)
-		if md and md not in help:
-			help[md] = a
+		a = '\n'.join(error_messages)
+		if a in self.C3_ERROR_HELP:
+			self.learn_c3_widget.load(tag=self.C3_ERROR_HELP[a])
+		else:
+			a = ' '.join(error_messages).lower()
+			a = a.replace('error', '')  ## otherwise all searches just return the doc on Error Handlers
+			md = self.learn_c3_widget.search(a)
+			if md and md not in help:
+				help[md] = a
 
 	def com_loop(self):
 		scope = {'random':random, 'uniform':uniform, 'math':math}
@@ -1569,6 +1598,7 @@ class Window(QWidget):
 		w.editor.textCursor().insertText(choice(LEARN_C3).strip())
 		learn_wasm = ['wasm1.md', 'wasm2.md', 'wasm3.md']
 		w.learn_c3_widget.load(tag=choice(learn_wasm))
+		self.megasolid = w
 
 	def blendgen(self, sym):
 		if sys.platform=='win32':
