@@ -1638,12 +1638,28 @@ export fn onclick( x:i32, y:i32 ) void {
 	_=x+y;
 	// note: the Zig compiler will optimize away `_=x+y`
 }
-
 '''
-
 """,
 
 ]
+
+LEARN_RUST = [
+"""
+.rust.script = r'''
+
+#[no_mangle]
+pub fn onclick( _x:i32, _y:i32 ) {
+	unsafe{
+		js_eval(
+			"window.alert('hello click')\\0".as_ptr()
+		);
+	}
+}
+'''
+""",
+
+]
+
 
 class LearnZig(QWidget):
 	def __init__(self, zoomout=0):
@@ -1771,7 +1787,12 @@ class Window(QWidget):
 		w.editor.textCursor().insertText(choice(LEARN_ZIG).strip())
 		self.megasolid = w
 
-	def blendgen(self, sym, use_learn_zig=False):
+	def learn_rust(self):
+		w = self.blendgen("👽", use_learn_rust=True)
+		w.editor.textCursor().insertText(choice(LEARN_RUST).strip())
+		self.megasolid = w
+
+	def blendgen(self, sym, use_learn_zig=False, use_learn_rust=False):
 		if sys.platform=='win32':
 			out = 'C:\\tmp\\%s.blend' % sym
 		else:
@@ -1780,7 +1801,9 @@ class Window(QWidget):
 		print(cmd)
 		subprocess.check_call(cmd)
 		window = ZigZagEditor()
-		if use_learn_zig:
+		if use_learn_rust:
+			window.reset(parent=self, use_learn_c3=False, use_learn_zig=False)
+		elif use_learn_zig:
 			window.reset(parent=self, use_learn_c3=False, use_learn_zig=True)
 		else:
 			window.reset(parent=self)
@@ -2112,6 +2135,16 @@ class Window(QWidget):
 		hbox = QHBoxLayout()
 		hbox.addWidget(c3btn)
 		hbox.addWidget(zbtn)
+
+		if os.path.isfile(os.path.expanduser('~/.cargo/bin/rustc')):
+			rbtn = QPushButton('⛭  ')
+			rbtn.setStyleSheet('font-size:40px')
+			lab = QLabel('rust', rbtn)
+			lab.move(45,10)
+			lab.setStyleSheet('font-size:14px; background-color:rgba(0,0,0,0)')
+			rbtn.clicked.connect(lambda e:self.learn_rust())
+			hbox.addWidget(rbtn)
+
 		hbox.addStretch(1)
 		hbox.addWidget(btn)
 		hbox.addWidget(button_cancel)
