@@ -33,6 +33,7 @@ RUST_INIT = '''
 		this.wasm=wasm;
 		this.canvas=document.getElementById(id);
 		this.gl=this.canvas.getContext('webgl');
+		this.canvas.onclick=this.onclick.bind(this);
 		this.gl.getExtension("OES_standard_derivatives");
 		this.bufs=[];
 		this.vs=[];
@@ -52,6 +53,11 @@ RUST_INIT = '''
 			this.prev=ts;
 			window.requestAnimationFrame(f)
 		});
+	}
+
+	onclick(e){
+		console.log("onclick:", e);
+		this.wasm.instance.exports.onclick(e.x,e.y)
 	}
 
 '''
@@ -222,6 +228,7 @@ fn handle_panic(_: &core::panic::PanicInfo) -> ! {
 RUST_EXTERN = '''
 extern "C"{
 	fn js_alert(s:*const u8, n:i32);
+	fn js_eval(s:*const u8);
 
 	fn gl_init(w:i32, h:i32);
 	fn gl_new_buffer() ->i32;
@@ -391,11 +398,19 @@ def blender_to_rust(world):
 	setup = []
 	draw = []
 
+
+	if world.rust_script:
+		header.append(world.rust_script.as_string())
+
 	for ob in bpy.data.objects:
 		if ob.hide_get(): continue
 		sname = safename(ob)
 		if ob.type=='MESH':
 			if not ob.data.materials: continue
+			if ob.name not in bpy.context.view_layer.objects:
+				print('rust export skip:', ob)  ## this can happen when linking a .blend and child is missing parent
+				continue
+
 
 			if '--disable-sym' in sys.argv:
 				is_symmetric = False
