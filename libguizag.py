@@ -1,4 +1,5 @@
 import os, sys, subprocess, atexit, string, math, hashlib
+import xml.dom.minidom
 from random import random, uniform, choice
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
@@ -167,7 +168,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if self._debug_chat:
 			self._debug_chat_bubble.hide()
 
-	def reset(self, parent=None):
+	def reset(self, parent=None, use_learn_c3=True, use_learn_zig=False):
 		self._c3_errors = {}
 		self.c3_funcs = {}
 		self.zig_funcs = {}
@@ -175,6 +176,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		alt_widget = None
 		self._debug_chat = None
 		self._show_learn_c3 = True
+		self.learn_c3_widget = self.learn_zig_widget = None
 		if libglzag:
 			self.glview = libglzag.Viewer(width=300,height=300)
 
@@ -195,9 +197,14 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			layout.addWidget(self.materials_container)
 			#layout.addLayout(self.materials_layout)
 
-			self.learn_c3_widget = learn_c3.LearnC3(zoomout=3)
-			self.learn_c3_widget.setStyleSheet('background-color:white; color:black')
-			layout.addWidget(self.learn_c3_widget)
+			if use_learn_c3:
+				self.learn_c3_widget = learn_c3.LearnC3(zoomout=3)
+				self.learn_c3_widget.setStyleSheet('background-color:white; color:black')
+				layout.addWidget(self.learn_c3_widget)
+			if use_learn_zig:
+				self.learn_zig_widget = LearnZig()
+				self.learn_zig_widget.setStyleSheet('background-color:white; color:black')
+				layout.addWidget(self.learn_zig_widget)
 
 		else:
 			self.glview = None
@@ -1600,6 +1607,85 @@ fn void onclick( int x, int y ) @extern("onclick") @wasm {
 
 ]
 
+LEARN_ZIG = [
+"""
+.zig.script = r'''
+
+export fn onclick( x:i32, y:i32 ) void {
+	js_eval(
+		"window.alert('hello click')"
+	);
+	// Zig is super strict, if x and y are not used in the function,
+	// you will get: `Error: unused function parameter`
+	// An ugly way to workaround this is to have this simple statement
+	_=x+y;
+	// note: the Zig compiler will optimize away `_=x+y`
+}
+
+'''
+
+""",
+
+]
+
+class LearnZig(QWidget):
+	def __init__(self, zoomout=0):
+		super().__init__()
+		self.pages = {}
+		self.zoomout = zoomout
+		self.resize(640, 700)
+		self.setWindowTitle('Learn Zig')
+		self.main_vbox = vbox = QVBoxLayout()
+		self.setLayout(self.main_vbox)
+		doc = open(os.path.join(_thisdir,'zig-doc.html')).read()
+		#if doc.startswith('<!doctype html>'):
+		#	doc = doc[ len('<!doctype html>') : ]
+		key = '<div id="contents-wrapper">'
+		assert doc.count(key)==1
+		doc = doc.split(key)[-1]
+		pages = []
+		page = []
+		for ln in doc.splitlines():
+			lns = ln.strip()
+			if lns.startswith( ('<h2 id=','<h3 id=') ):
+				page = [ln]
+				pages.append(page)
+			else:
+				page.append(ln)
+
+		for page in pages:
+			doc = '\n'.join(page).strip()
+			try:
+				doc = xml.dom.minidom.parseString('<body>%s</body>'%doc)
+				print(doc)
+			except xml.parsers.expat.ExpatError:
+				print(doc.encode('utf-8'))
+				continue
+
+			title = doc.documentElement.firstChild.getAttribute('id')
+			print(title)
+			self.pages[title] = doc.toxml()
+
+		self.load_random()
+		self.show()
+
+	def load_random(self):
+		clear_layout(self.main_vbox)
+		btn = QPushButton('next')
+		btn.clicked.connect(lambda b: self.load_random())
+		self.main_vbox.addWidget(btn)
+
+		title = choice( list(self.pages.keys()) )
+		print('loading:', title)
+		self.setWindowTitle(title)
+		self.edit = edit = QTextEdit()
+		html = self.pages[title]
+		edit.setHtml(html)
+		if self.zoomout:
+			edit.zoomOut(self.zoomout)
+		self.main_vbox.addWidget(edit)
+
+
 class Window(QWidget):
 	def open_code_editor(self, *args):
 		window = ZigZagEditor()
@@ -1615,7 +1701,13 @@ class Window(QWidget):
 		w.learn_c3_widget.load(tag=choice(learn_wasm))
 		self.megasolid = w
 
-	def blendgen(self, sym):
+	def learn_zig(self):
+		w = self.blendgen("🐱", use_learn_zig=True)
+		w.editor.textCursor().insertText(choice(LEARN_ZIG).strip())
+		w.learn_c3_widget.hide()
+		self.megasolid = w
+
+	def blendgen(self, sym, use_learn_zig=False):
 		if sys.platform=='win32':
 			out = 'C:\\tmp\\%s.blend' % sym
 		else:
@@ -1624,7 +1716,10 @@ class Window(QWidget):
 		print(cmd)
 		subprocess.check_call(cmd)
 		window = ZigZagEditor()
-		window.reset(parent=self)
+		if use_learn_zig:
+			window.reset(parent=self, use_learn_c3=False, use_learn_zig=True)
+		else:
+			window.reset(parent=self)
 		window.load_blends([out])
 		window.show()
 		self.megasolid = window
@@ -1937,6 +2032,11 @@ class Window(QWidget):
 		c3btn.setIconSize( QSize(105,60) )
 		c3btn.clicked.connect(lambda e:self.learn_c3() )
 
+		zbtn = QPushButton('',self)
+		zbtn.setIcon(QIcon(os.path.join(_thisdir,'Zig-button.png')))
+		zbtn.setIconSize( QSize(146,60) )
+		zbtn.clicked.connect(lambda e:self.learn_zig() )
+
 		btn = QPushButton('Blender')
 		btn.setIcon(QIcon(os.path.join(_thisdir,'Blender-button.png')))
 		btn.setIconSize( QSize(59,50) )
@@ -1947,6 +2047,7 @@ class Window(QWidget):
 
 		hbox = QHBoxLayout()
 		hbox.addWidget(c3btn)
+		hbox.addWidget(zbtn)
 		hbox.addStretch(1)
 		hbox.addWidget(btn)
 		hbox.addWidget(button_cancel)
@@ -1990,6 +2091,10 @@ if __name__=='__main__':
 	elif '--learn-c3' in sys.argv:
 		app = QApplication(sys.argv)
 		window = learn_c3.LearnC3()
+		app.exec()
+	elif '--learn-zig' in sys.argv:
+		app = QApplication(sys.argv)
+		window = LearnZig()
 		app.exec()
 	else:
 		main()
