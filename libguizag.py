@@ -170,6 +170,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 	def reset(self, parent=None, use_learn_c3=True, use_learn_zig=False):
 		self._c3_errors = {}
+		self._zig_errors = {}
 		self.c3_funcs = {}
 		self.zig_funcs = {}
 		self._parent=parent
@@ -417,11 +418,14 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 	def parse_zig_error(self, err, line_offset=0):
 		o = []
+		errors_raw = []
 		for ln in err.splitlines():
 			if '__tmp__.zig:':
 				ln = ln.split('__tmp__.zig:')[-1]
 				if ln.count(': error:')==1:
-					ln = '<b>Error:</b>' + ln.split(': error:')[-1]
+					e = ln.split(': error:')[-1]
+					ln = '<b>Error:</b>' + e
+					errors_raw.append(ln)
 			o.append(ln)
 		if self._prev_err != err:
 			self._prev_err = err
@@ -430,6 +434,19 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			self.popup.setText(msg)
 			self.popup.adjustSize()
 			self.popup.show()
+			if err not in self._zig_errors:
+				self.zig_search_for_help(err, errors_raw)
+
+	def zig_search_for_help(self, err, error_messages):
+		print('zig help search:', error_messages)
+		help = {}
+		self._zig_errors[err] = help
+		a = ' '.join(error_messages).lower()
+		title = self.learn_zig_widget.search(a)
+		if title:
+			help[title]=a
+		else:
+			print('WARN: no search results')
 
 
 	def check_c3(self, c3):
@@ -1670,12 +1687,15 @@ class LearnZig(QWidget):
 		self.show()
 
 	def load_random(self):
+		title = choice( list(self.pages.keys()) )
+		self.load(title)
+
+	def load(self, title):
 		clear_layout(self.main_vbox)
 		btn = QPushButton('next')
 		btn.clicked.connect(lambda b: self.load_random())
 		self.main_vbox.addWidget(btn)
 
-		title = choice( list(self.pages.keys()) )
 		print('loading:', title)
 		self.setWindowTitle(title)
 		self.edit = edit = QTextEdit()
@@ -1684,6 +1704,51 @@ class LearnZig(QWidget):
 		if self.zoomout:
 			edit.zoomOut(self.zoomout)
 		self.main_vbox.addWidget(edit)
+
+	def search(self, s):
+		words = s.lower().split()
+		print('search:', words)
+		rem = 'a the this is not name <br/> : -'.split()
+		for r in rem:
+			if r in words:
+				words.remove(r)
+		print('SEARCH:', words)
+
+		ranks = {}
+		tmp = QTextEdit()
+		for title in self.pages:
+			score = 0
+			txt = title.lower().split()
+			for word in words:
+				score += txt.count(word) * 10
+
+			tmp.setHtml(self.pages[title])
+			txt = tmp.toPlainText().lower().split()
+			for word in words:
+				score += txt.count(word)
+
+			if score not in ranks:
+				ranks[score] = []
+
+			ranks[score].append(title)
+
+		del tmp
+
+		scores = list(ranks.keys())
+		scores.sort()
+		scores.reverse()
+		best = None
+		for score in scores:
+			if not score: break
+			titles = ranks[score]
+			print('rank %s:' % score)
+			for title in titles:
+				if best is None:
+					best = title
+		if best:
+			self.load(title)
+			return best
+
 
 
 class Window(QWidget):
@@ -1704,7 +1769,6 @@ class Window(QWidget):
 	def learn_zig(self):
 		w = self.blendgen("🐱", use_learn_zig=True)
 		w.editor.textCursor().insertText(choice(LEARN_ZIG).strip())
-		w.learn_c3_widget.hide()
 		self.megasolid = w
 
 	def blendgen(self, sym, use_learn_zig=False):
