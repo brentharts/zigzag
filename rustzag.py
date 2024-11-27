@@ -88,11 +88,10 @@ def build(rs, name='rust_test', jsapi=None, preview=True, out=None):
 	]
 	print(cmd)
 	subprocess.check_call(cmd, cwd='/tmp')
-	os.system('ls -lh /tmp/*.wasm')
 
-	wasm = wasm_strip(wasm)
-	wasm = wasm_opt(wasm)
-	os.system('ls -lh /tmp/*.wasm')
+	if sys.platform != 'win32':
+		wasm = wasm_strip(wasm)
+		wasm = wasm_opt(wasm)
 
 	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', wasm]
 	print(cmd)
@@ -123,7 +122,13 @@ def build(rs, name='rust_test', jsapi=None, preview=True, out=None):
 		out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
 	if preview:
-		webbrowser.open(out)
+		FIREFOX = '/Program Files/Mozilla Firefox/firefox.exe'
+		if sys.platform=='win32' and os.path.isfile(FIREFOX):
+			## FireFox has Float16Array support
+			subprocess.Popen([FIREFOX, '-url', out])
+		else:
+			## on linux assume that firefox is default browser
+			webbrowser.open(out)
 
 
 NO_STD='''
