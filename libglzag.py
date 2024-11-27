@@ -2,6 +2,7 @@ import os, sys, json, subprocess, math
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 from random import random, uniform
+import libzader
 
 def mesh_to_json(ob):
 	import bpy
@@ -142,35 +143,8 @@ else:
 	#from PyQt6.QtOpenGL import QOpenGLFunctions_4_1_Core as QOpenGLFunctions
 	#from PyQt6.QtOpenGL import QOpenGLFunctions_2_1_Core as QOpenGLFunctions
 
+USE_CPU_XFORM = '--cpu-xform' in sys.argv
 
-
-# VVS vertex view space
-VSHADER = '''
-attribute vec3 vp;
-uniform mat4 P;
-uniform mat4 V;
-uniform mat4 M;
-uniform vec3 T;
-varying vec3 VVS;
-varying vec3 VC;
-void main(void){
-	VVS=(M*V*vec4(vp,1.0)).xyz;
-	gl_Position=P*V*M*vec4(vp,1.);
-	VC=T;
-}
-'''
-
-FSHADER = '''
-varying vec3 VVS;
-varying vec3 VC;
-void main(void){
-	vec3 U=dFdx(VVS);
-	vec3 V=dFdy(VVS);
-	vec3 N=normalize(cross(U,V));
-	vec3 f=vec3(1.1,1.1,1.1)*N.z;
-	gl_FragColor=vec4( (VC+(N*0.2))*f ,1.0);
-}
-'''
 
 #TypeError: could not convert 'Viewer' to 'QOpenGLFunctions_4_1_Core'
 #class Viewer(QOpenGLWidget, QOpenGLFunctions):
@@ -406,23 +380,37 @@ class Viewer(QOpenGLWidget):
 		#print('V loc:', loc)
 		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(V,dtype=np.float32))
 
-		loc = self.prog.uniformLocation("M")
-		#print('M loc:', loc)
-		#if 'POS' in ob:
-		#M = ob['matrix']
-		m = QMatrix4x4()
-		x,y,z = ob['rotation']
-		m.rotate(x, 1,0,0)  ## in degrees not radians
-		m.rotate(y, 0,1,0)
-		m.rotate(z, 0,0,1)
+		if USE_CPU_XFORM:
+			loc = self.prog.uniformLocation("M")
+			#print('M loc:', loc)
+			#if 'POS' in ob:
+			#M = ob['matrix']
+			m = QMatrix4x4()
+			x,y,z = ob['rotation']
+			m.rotate(x, 1,0,0)  ## in degrees not radians
+			m.rotate(y, 0,1,0)
+			m.rotate(z, 0,0,1)
 
-		x,y,z = ob['scale']
-		m.scale(x,y,z)
+			x,y,z = ob['scale']
+			m.scale(x,y,z)
 
-		#x,y,z = ob['pos']
-		#m.translate(x,y,z)
-		M = m.data()
-		glUniformMatrix4fv(loc,1,GL_FALSE, np.array(M,dtype=np.float32))
+			#x,y,z = ob['pos']
+			#m.translate(x,y,z)
+			M = m.data()
+			glUniformMatrix4fv(loc,1,GL_FALSE, np.array(M,dtype=np.float32))
+		else:
+			loc = self.prog.uniformLocation("MP")
+			#print('MP loc:', loc)
+			glUniform3fv(loc,1,np.array([0,0,0],dtype=np.float32))
+
+			loc = self.prog.uniformLocation("MS")
+			#print('MS loc:', loc)
+			glUniform3fv(loc,1,np.array(ob['scale'],dtype=np.float32))
+
+			loc = self.prog.uniformLocation("MR")
+			#print('MR loc:', loc)
+			rot = [math.radians(r) for r in ob['rotation']]
+			glUniform3fv(loc,1,np.array(rot,dtype=np.float32))
 
 		loc = self.prog.uniformLocation("T")
 		#print('T loc:', loc)
@@ -449,8 +437,15 @@ class Viewer(QOpenGLWidget):
 	def view_blender_object(self, name, blend):
 		if not self.prog:
 			self.prog = QOpenGLShaderProgram(self)
-			self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, VSHADER)
-			self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, FSHADER)
+			if USE_CPU_XFORM:
+				self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, libzader.VSHADER_CPU_XFORM)
+			else:
+				self.prog.addShaderFromSourceCode(
+					QOpenGLShader.ShaderTypeBit.Vertex, 
+					libzader.GLSL_XFORM + libzader.VSHADER_GPU_XFORM
+				)
+
+			self.prog.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, libzader.FSHADER)
 			self.prog.link()
 		self.prog.bind()
 
