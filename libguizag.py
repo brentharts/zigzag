@@ -1071,10 +1071,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		print(cmd)
 		#subprocess.check_call(cmd)
 		res = subprocess.run(cmd, capture_output=True, text=True)
+		print(res.stdout)
+		print(res.stderr)
 		if res.returncode != 0:
 			print('COMPILE ERROR!')
-			print(res.stdout)
-			print(res.stderr)
 			self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:10px')
 			if res.stderr.strip():
 				self.popup.setText(res.stderr)
@@ -1082,6 +1082,16 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				self.popup.setText(res.stdout)
 			self.popup.adjustSize()
 			self.popup.show()
+		else:
+			warns = []
+			for ln in (res.stdout+res.stderr).splitlines():
+				if ln.lower().startswith( 'warning:' ):
+					warns.append(ln.strip())
+			if warns:
+				self.popup.setStyleSheet('background-color:black; color:yellow; font-size:10px')
+				self.popup.setText('\n'.join(warns))
+				self.popup.adjustSize()
+				self.popup.show()
 
 
 	def export_html(self, *args):
