@@ -4,13 +4,14 @@ _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 import libwebzag
 import libgenzag
+import libzader
 
 if '-gui' in sys.argv:
 	import libguizag
 	libguizag.main()
 	sys.exit()
 
-
+USE_CPU_XFORM = '--cpu-xform' in sys.argv
 GZIP = 'gzip'
 zigzip=zigxz=None
 if sys.platform == 'win32':
@@ -506,7 +507,7 @@ def calc_stroke_width(stroke):
 	sw /= len(stroke.points)
 	return sw * stroke.line_width * 0.05
 
-ZIG_SHADER_HEADER = '''
+ZIG_SHADER_HEADER_CPU_XFORM = '''
 var vs : i32 = undefined;
 var fs : i32 = undefined;
 var prog : i32 = undefined;
@@ -515,6 +516,20 @@ var vloc : i32 = undefined;
 var mloc : i32 = undefined;
 var posloc : i32 = undefined;
 '''
+
+ZIG_SHADER_HEADER = '''
+var vs : i32 = undefined;
+var fs : i32 = undefined;
+var prog : i32 = undefined;
+var ploc : i32 = undefined;
+var vloc : i32 = undefined;
+var mploc : i32 = undefined;
+var msloc : i32 = undefined;
+var mrloc : i32 = undefined;
+var posloc : i32 = undefined;
+'''
+
+
 
 ZIG_HEADER_WEBGL = '''
 const EntryFunc = *const fn() callconv(.C) void;
@@ -545,6 +560,7 @@ extern fn gl_use_program(prog:c_int) void;
 
 extern fn gl_draw_tris_tint(len:c_int, r:f32, g:f32, b:f32) void;
 extern fn gl_uniform_mat4fv(loc:c_int, mat:[*]f32) void;
+extern fn gl_uniform_3fv(loc:c_int, mat:[*]f32) void;
 
 extern fn gl_trans(matid:c_int, x:f32, y:f32, z:f32) void;
 extern fn gl_trans_upload(vid:c_int) void;
@@ -860,7 +876,7 @@ def blender_to_zig_webgl(world):
 		ZIG_SHADER_HEADER,
 		ZIG_HEADER_WEBGL,
 		ZIG_HELPER_FUNCS,
-		gen_shaders(),
+		libzader.gen_shaders(mode='ZIG'),
 		DEBUG_CAMERA,
 	]
 
@@ -923,57 +939,9 @@ def blender_to_zig_webgl(world):
 
 	return header + data + update + main
 
-def gen_shaders():
-	o = [
-		'const VERTEX_SHADER =',
-	]
-	for ln in VSHADER.splitlines():
-		ln = ln.strip()
-		if not ln: continue
-		if ln.startswith('//'): continue
-		o.append(r'\\' + ln)  ## yes, multi-line strings in zig start with \\
-	o.append(';')
-	o.append('const FRAGMENT_SHADER =')
-	for ln in FSHADER.splitlines():
-		ln = ln.strip()
-		if not ln: continue
-		if ln.startswith('//'): continue
-		o.append(r'\\' + ln)  ## yes, multi-line strings in zig start with \\
-	o.append(';')
-	return '\n'.join(o)
-
-# VVS vertex view space
-VSHADER = '''
-attribute vec3 vp;
-uniform mat4 P;
-uniform mat4 V;
-uniform mat4 M;
-uniform vec3 T;
-varying vec3 VVS;
-varying vec3 VC;
-void main(void){
-	VVS=(M*V*vec4(vp,1.0)).xyz;
-	gl_Position=P*V*M*vec4(vp,1.);
-	VC=T;
-}
-'''
-
-FSHADER = '''
-#extension GL_OES_standard_derivatives:enable
-precision mediump float;
-varying vec3 VVS;
-varying vec3 VC;
-void main(void){
-	vec3 U=dFdx(VVS);
-	vec3 V=dFdy(VVS);
-	vec3 N=normalize(cross(U,V));
-	vec3 f=vec3(1.1,1.1,1.1)*N.z;
-	gl_FragColor=vec4( (VC+(N*0.2))*f ,1.0);
-}
-'''
 
 
-ZIG_SHADER_SETUP = '''
+ZIG_SHADER_SETUP_CPU_XFORM = '''
 	vs = gl_new_vshader(VERTEX_SHADER);
 	fs = gl_new_fshader(FRAGMENT_SHADER);
 
@@ -989,6 +957,26 @@ ZIG_SHADER_SETUP = '''
 	posloc = gl_get_attr_location(prog, "vp");  // vertex position
 
 '''
+
+ZIG_SHADER_SETUP = '''
+	vs = gl_new_vshader(VERTEX_SHADER);
+	fs = gl_new_fshader(FRAGMENT_SHADER);
+
+	prog = gl_new_program();
+	gl_attach_vshader(prog, vs);
+	gl_attach_fshader(prog, fs);
+	gl_link_program( prog );
+
+	ploc = gl_get_uniform_location(prog, "P");  // projection Pmat
+	vloc = gl_get_uniform_location(prog, "V");  // view matrix
+	mploc = gl_get_uniform_location(prog, "MP");  // model position
+	msloc = gl_get_uniform_location(prog, "MS");  // model scale
+	mrloc = gl_get_uniform_location(prog, "MR");  // model rotation
+
+	posloc = gl_get_attr_location(prog, "vp");  // vertex position
+
+'''
+
 
 def mesh_to_zig(ob, mirror=False):
 	if mirror: mirror = 1
@@ -1039,11 +1027,18 @@ def mesh_to_zig(ob, mirror=False):
 	for vec in ob.matrix_local:
 		mat += [str(v) for v in vec]
 
-
-	data += [
-		'var %s_vbuff : i32 = undefined;' % name,
-		'var %s_mat : [16]f32 = .{%s};' %(name,','.join(mat)),
-	]
+	if USE_CPU_XFORM:
+		data += [
+			'var %s_vbuff : i32 = undefined;' % name,
+			'var %s_mat : [16]f32 = .{%s};' %(name,','.join(mat)),
+		]
+	else:
+		data += [
+			'var %s_vbuff : i32 = undefined;' % name,
+			'var %s_pos : [3]f32 = .{%s};' %(name,','.join( [str(v) for v in ob.location] )),
+			'var %s_rot : [3]f32 = .{%s};' %(name,','.join( [str(v) for v in ob.rotation_euler] )),
+			'var %s_scl : [3]f32 = .{%s};' %(name,','.join( [str(v) for v in ob.scale] )),
+		]
 
 	setup = [
 		'%s_vbuff = gl_new_buffer();' % name,
@@ -1062,10 +1057,18 @@ def mesh_to_zig(ob, mirror=False):
 			'gl_buffer_element(%s, INDICES_%s_%s.len, &INDICES_%s_%s);' %(mirror, sname,midx, sname,midx),
 		]
 
-	draw += [
-		'gl_bind_buffer(%s_vbuff);' % name,
-		'gl_uniform_mat4fv(mloc, &%s_mat);' % name,  ## update object matrix uniform
-	]
+	if USE_CPU_XFORM:	
+		draw += [
+			'gl_bind_buffer(%s_vbuff);' % name,
+			'gl_uniform_mat4fv(mloc, &%s_mat);' % name,  ## update object matrix uniform
+		]
+	else:
+		draw += [
+			'gl_bind_buffer(%s_vbuff);' % name,
+			'gl_uniform_3fv(mploc, &%s_pos);' % name,  ## update object position
+			'gl_uniform_3fv(msloc, &%s_scl);' % name,  ## update object scale
+			'gl_uniform_3fv(mrloc, &%s_rot);' % name,  ## update object rotation
+		]
 
 
 	needs_upload = False
@@ -1319,7 +1322,7 @@ if __name__=='__main__':
 	elif '--test-3d' in sys.argv:
 		bpy.data.objects['Cube'].hide_set(True)
 		ob = libgenzag.monkey()
-		ob.rotation_euler.x = -math.pi/2
-		bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+		#ob.rotation_euler.x = -math.pi/2
+		#bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 		build_webgl(bpy.data.worlds[0])
 		
