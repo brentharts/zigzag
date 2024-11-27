@@ -1,4 +1,4 @@
-GLSL_XFORM = '''
+_GLSL_XFORM_ = '''
 mat3 rot3(vec3 r) {
 	float cx = cos(r.x);
 	float sx = sin(r.x);
@@ -25,23 +25,29 @@ mat4 xform(vec3 t, vec3 sc, vec3 r) {
 }
 '''
 
+GLSL_XFORM = '''
+mat3 rot3(vec3 r){
+	float a=cos(r.x),b=sin(r.x),c=cos(r.y),d=sin(r.y),e=cos(r.z),f=sin(r.z);
+	return mat3(c*e,a*f+b*d*e,b*f-a*d*e,-c*f,a*e-b*d*f,b*e+a*d*f,d,-b*c,a*c);
+}
+mat4 xform(vec3 t,vec3 sc,vec3 r){
+	mat3 s=mat3(sc.x,.0,.0,.0,sc.y,.0,.0,.0,sc.z),x=rot3(r)*s;
+	return mat4(x[0],.0,x[1],.0,x[2],.0,t,1.0);
+}
+'''
+
 
 ## MP = model position, MS = model scale, MR = model rotation
 VSHADER_GPU_XFORM = '''
 attribute vec3 vp;
-uniform mat4 P;
-uniform mat4 V;
-uniform vec3 MP;
-uniform vec3 MS;
-uniform vec3 MR;
-uniform vec3 T;
+uniform mat4 P,V;
+uniform vec3 MP,MS,MR,T;
 varying vec3 VVS;
 varying vec3 VC;
-
-void main() {
-	mat4 xfm=xform(MP,MS,MR);
-	gl_Position=P*V*xfm*vec4(vp,1.0);
-	VVS=(xfm*V*vec4(vp,1.0)).xyz;
+void main(){
+	mat4 x=xform(MP,MS,MR);
+	gl_Position=P*V*x*vec4(vp,1.0);
+	VVS=(x*V*vec4(vp,1.0)).xyz;
 	VC=T;
 }
 '''
