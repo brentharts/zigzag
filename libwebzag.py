@@ -322,6 +322,12 @@ GL_ZAG = '''
 		const mat = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,16);
 		this.gl.uniformMatrix4fv(this.locs[a], false, mat)
 	}
+
+	gl_uniform_3fv(a,ptr){
+		const mat = new Float32Array(this.wasm.instance.exports.memory.buffer,ptr,3);
+		this.gl.uniform3fv(this.locs[a], new Float32Array(mat));
+	}
+
 	gl_draw_triangles(n){
 		//console.log('draw triangles:', n);
 		this.gl.drawElements(this.gl.TRIANGLES,n,this.gl.UNSIGNED_SHORT,0);
