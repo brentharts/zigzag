@@ -2,8 +2,8 @@
 import os, sys, subprocess, base64, webbrowser
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
-import zigzag, libwebzag, libgenzag
-from zigzag import GZIP, BLENDER, VSHADER, FSHADER, safename, is_mesh_sym
+import zigzag, libwebzag, libgenzag, libzader
+from zigzag import GZIP, BLENDER, safename, is_mesh_sym
 
 #sudo apt-get install wabt
 def wasm_strip(wasm):
@@ -256,6 +256,7 @@ extern "C"{
 
 	fn gl_draw_tris_tint(len:i32, r:f32, g:f32, b:f32);
 	fn gl_uniform_mat4fv(loc:i32, mat:*const f32);
+	fn gl_uniform_3fv(loc:i32, mat:*const f32);
 
 	fn gl_trans(matid:i32, x:f32, y:f32, z:f32);
 	fn gl_trans_upload(vid:i32);
@@ -272,15 +273,19 @@ extern "C"{
 
 '''
 
+
 RUST_SHADER_VARS = '''
 static mut vs : i32 = 0;
 static mut fs : i32 = 0;
 static mut prog : i32 = 0;
 static mut ploc : i32 = 0;
 static mut vloc : i32 = 0;
-static mut mloc : i32 = 0;
+static mut mploc : i32 = 0;
+static mut msloc : i32 = 0;
+static mut mrloc : i32 = 0;
 static mut posloc : i32 = 0;
 '''
+
 
 #https://internals.rust-lang.org/t/convenient-null-terminated-string-literals/14267
 RUST_SHADER_SETUP = r'''
@@ -294,37 +299,14 @@ RUST_SHADER_SETUP = r'''
 
 	ploc = gl_get_uniform_location(prog, "P\0".as_ptr());  // projection Pmat
 	vloc = gl_get_uniform_location(prog, "V\0".as_ptr());  // view matrix
-	mloc = gl_get_uniform_location(prog, "M\0".as_ptr());  // model matrix
+	mploc = gl_get_uniform_location(prog, "MP\0".as_ptr());  // model position
+	msloc = gl_get_uniform_location(prog, "MS\0".as_ptr());  // model scale
+	mrloc = gl_get_uniform_location(prog, "MR\0".as_ptr());  // model rotation
 
 	posloc = gl_get_attr_location(prog, "vp\0".as_ptr());  // vertex position
 
 '''
 
-## https://doc.rust-lang.org/reference/tokens.html#c-string-literals
-def gen_shaders():
-	assert '"' not in VSHADER
-	assert '"' not in FSHADER
-
-	o = [
-		#'const VERTEX_SHADER:&str =r###"',
-		#'const VERTEX_SHADER:&str = c"',
-		'const VERTEX_SHADER:&str = "',
-	]
-	for ln in VSHADER.splitlines():
-		ln = ln.strip()
-		if not ln: continue
-		if ln.startswith('//'): continue
-		o.append(ln)
-	#o.append(r'\0"###;')
-	o.append('\0x00";')
-	o.append('const FRAGMENT_SHADER:&str = "')
-	for ln in FSHADER.splitlines():
-		ln = ln.strip()
-		if not ln: continue
-		if ln.startswith('//'): continue
-		o.append(ln)
-	o.append('\0x00";')
-	return '\n'.join(o)
 
 DEBUG_CAMERA = '''
 static mut proj_matrix : [f32;16] = [1.8106600046157837, 0.0, 0.0, 0.0, 0.0, 2.4142134189605713, 0.0, 0.0, 0.0, 0.0, -1.0202020406723022, -1.0, 0.0, 0.0, -2.0202019214630127, 0.0];
@@ -390,7 +372,7 @@ def blender_to_rust(world):
 		RUST_HEADER, 
 		RUST_EXTERN,
 		RUST_SHADER_VARS,
-		gen_shaders(),
+		libzader.gen_shaders(mode='RUST'),
 		DEBUG_CAMERA,
 		RUST_HELPER_FUNCS,
 	]
@@ -512,7 +494,12 @@ def mesh_to_rust(ob, mirror=False):
 
 	data += [
 		'static mut %s_vbuff : i32 = 0;' % name,
-		'static mut %s_mat : [f32;16] = [%s];' %(name,','.join(mat)),
+		#'static mut %s_mat : [f32;16] = [%s];' %(name,','.join(mat)),
+
+		'static mut %s_pos : [f32;3] = [%s];' %(name,','.join( [str(v) for v in ob.location] )),
+		'static mut %s_rot : [f32;3] = [%s];' %(name,','.join( [str(v) for v in ob.rotation_euler] )),
+		'static mut %s_scl : [f32;3] = [%s];' %(name,','.join( [str(v) for v in ob.scale] )),
+
 	]
 
 
@@ -537,7 +524,9 @@ def mesh_to_rust(ob, mirror=False):
 
 	draw += [
 		'gl_bind_buffer(%s_vbuff);' % name,
-		'gl_uniform_mat4fv(mloc, %s_mat.as_ptr());' % name,  ## update object matrix uniform
+		'gl_uniform_3fv(mploc, %s_pos.as_ptr());' % name,
+		'gl_uniform_3fv(msloc, %s_scl.as_ptr());' % name,
+		'gl_uniform_3fv(mrloc, %s_rot.as_ptr());' % name,
 	]
 
 
