@@ -313,36 +313,7 @@ static mut proj_matrix : [f32;16] = [1.8106600046157837, 0.0, 0.0, 0.0, 0.0, 2.4
 static mut view_matrix : [f32;16] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -5.0, 1.0];
 '''
 
-#pub fn rotateY(mut m:[f32;16], angle:f32) {
-#pub fn rotateY(m:&[f32;16], angle:f32) {
-
 ## help: consider using `wrapping_add` or `add` for indexing into raw pointer
-#pub fn rotateY(m:*const f32, angle:f32) {
-
-RUST_HELPER_FUNCS = '''
-pub fn rotateY(m:*const f32, angle:f32) {
-	unsafe{
-		let c:f32 = js_cos(angle);
-		let s:f32 = js_sin(angle);	
-
-		let mv0:f32 = m[0];
-		let mv4:f32 = m[4];
-		let mv8:f32 = m[8];
-
-		m[0] = c*m[0]+s*m[2];
-		m[4] = c*m[4]+s*m[6];
-		m[8] = c*m[8]+s*m[10];
-
-		m[2] = c*m[2]-s*mv0;
-		m[6] = c*m[6]-s*mv4;
-		m[10] = c*m[10]-s*mv8;
-
-	}
-}
-
-'''
-
-
 RUST_HELPER_FUNCS = '''
 pub fn rotateY(m:*mut f32, angle:f32) {
 	unsafe{
@@ -374,7 +345,7 @@ def blender_to_rust(world):
 		RUST_SHADER_VARS,
 		libzader.gen_shaders(mode='RUST'),
 		DEBUG_CAMERA,
-		RUST_HELPER_FUNCS,
+		#RUST_HELPER_FUNCS,
 	]
 	data = []
 	setup = []
@@ -559,14 +530,14 @@ def mesh_to_rust(ob, mirror=False):
 		if mat.zigzag_object_type != "NONE":
 			if mat.zigzag_object_type=="LOWER_LIP":
 				draw += [
-					'if(js_rand() < 0.06){',
+					'if js_rand() < 0.06 {',
 					'	gl_trans(%s_%s_ibuff,0.0,0.0, (js_rand()-0.25)*0.1);' % (name,midx),
 					'	needs_upload=true;',
 					'}',
 				]
 			elif mat.zigzag_object_type=="EYES":
 				draw += [
-					'if(js_rand() < 0.03){',
+					'if js_rand() < 0.03 {',
 					'	eyes_x=(js_rand()-0.5)*0.05;',
 					'	eyes_y=(js_rand()-0.5)*0.01;',
 					#'	rotateY(%s_mat.as_mut_ptr(), eyes_x*2.0);' %name,
@@ -582,7 +553,7 @@ def mesh_to_rust(ob, mirror=False):
 
 			elif mat.zigzag_object_type=="UPPER_EYELID":
 				draw += [
-					'if(js_rand() < 0.06 || needs_upload){',
+					'if js_rand() < 0.06 || needs_upload {',
 					'	gl_trans(%s_%s_ibuff, eyes_x*0.2, -0.05, ((js_rand()-0.7)*0.07)+(eyes_y*0.2));' % (name,midx),
 					'	needs_upload=true;',
 					'}',
@@ -591,7 +562,7 @@ def mesh_to_rust(ob, mirror=False):
 
 		if needs_upload:
 			draw.append(
-				'if(needs_upload) { gl_trans_upload(%s_vbuff); }' % name
+				'if needs_upload { gl_trans_upload(%s_vbuff); }' % name
 			)
 
 
