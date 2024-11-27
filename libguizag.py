@@ -93,17 +93,24 @@ else:
 	)
 
 import learn_c3
-
+RUSTC = None
 if sys.platform == 'win32':
 	C3 = os.path.join(_thisdir,'c3/c3c.exe')  ## latest unstable
 	if not os.path.isfile(C3): C3 = os.path.abspath('./c3-windows-Release/c3c.exe')
 	ZIG = os.path.join(_thisdir, 'zig-windows-x86_64-0.13.0/zig.exe')
+	if os.path.isfile(os.path.expanduser('~/.cargo/bin/rustc.exe')):
+		RUSTC = os.path.expanduser('~/.cargo/bin/rustc.exe')
 elif sys.platform == 'darwin':
 	C3 = os.path.abspath('./c3/c3c')
 	ZIG = os.path.join(_thisdir, 'zig-macos-aarch64-0.13.0/zig')
+	if os.path.isfile(os.path.expanduser('~/.cargo/bin/rustc')):
+		RUSTC = os.path.expanduser('~/.cargo/bin/rustc')
 else:
 	C3 = os.path.abspath('./c3/c3c')
 	ZIG = os.path.join(_thisdir, 'zig-linux-x86_64-0.13.0/zig')
+	if os.path.isfile(os.path.expanduser('~/.cargo/bin/rustc')):
+		RUSTC = os.path.expanduser('~/.cargo/bin/rustc')
+
 
 if not os.path.isfile(C3):
 	print("WARN: C3 compiler not installed")
@@ -2136,7 +2143,7 @@ class Window(QWidget):
 		hbox.addWidget(c3btn)
 		hbox.addWidget(zbtn)
 
-		if os.path.isfile(os.path.expanduser('~/.cargo/bin/rustc')):
+		if RUSTC:
 			rbtn = QPushButton('⛭  ')
 			rbtn.setStyleSheet('font-size:40px')
 			lab = QLabel('rust', rbtn)
