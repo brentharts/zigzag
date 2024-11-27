@@ -4,9 +4,7 @@ _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path:
 	## fixes importing of our fork of mesh_auto_mirror.py for Blender 3.6
 	sys.path.insert(0, _thisdir)
-import zigzag
-import libwebzag
-import libgenzag
+import zigzag, libwebzag, libgenzag, libzader
 from zigzag import is_mesh_sym
 
 HELP='''
@@ -19,6 +17,7 @@ options:
 
 '''
 
+USE_CPU_XFORM = '--cpu-xform' in sys.argv
 C3 = '/usr/local/bin/c3c'
 GZIP = 'gzip'
 FIREFOX = '/usr/bin/firefox'
@@ -249,6 +248,8 @@ extern fn void gl_clear(float r, float g, float b, float a, float z);
 extern fn void gl_viewport(int x, int y, int w, int h);
 
 extern fn void gl_uniform_mat4fv(int loc, float *mat);
+extern fn void gl_uniform_3fv(int loc, float *mat);
+
 extern fn void gl_draw_triangles(int len);
 extern fn void gl_draw_tris_tint(int len, float r, float g, float b);
 
@@ -674,22 +675,18 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 		os.system('ls -lh %s.zip' % out)
 
 
-SHADER_HEADER = '''
+SHADER_HEADER_CPU = '''
 int vs;
 int fs;
 int prog;
-
 int ploc;
 int vloc;
 int mloc;
-
 int posloc;
 int clrloc;
-
-
 '''
 
-SHADER_SETUP = '''
+SHADER_SETUP_CPU = '''
 	vs = gl_new_vshader(VERTEX_SHADER);
 	fs = gl_new_fshader(FRAGMENT_SHADER);
 
@@ -707,12 +704,47 @@ SHADER_SETUP = '''
 
 '''
 
+SHADER_HEADER_GPU = '''
+int vs;
+int fs;
+int prog;
+int ploc;
+int vloc;
+int mploc;
+int msloc;
+int mrloc;
+int posloc;
+int clrloc;
+'''
+
+SHADER_SETUP_GPU = '''
+	vs = gl_new_vshader(VERTEX_SHADER);
+	fs = gl_new_fshader(FRAGMENT_SHADER);
+
+	prog = gl_new_program();
+	gl_attach_vshader(prog, vs);
+	gl_attach_fshader(prog, fs);
+	gl_link_program( prog );
+
+	ploc = gl_get_uniform_location(prog, "P");  // projection Pmat
+	vloc = gl_get_uniform_location(prog, "V");  // view matrix
+	mploc = gl_get_uniform_location(prog, "MP");
+	msloc = gl_get_uniform_location(prog, "MS");
+	mrloc = gl_get_uniform_location(prog, "MR");
+
+	posloc = gl_get_attr_location(prog, "vp");  // vertex position
+	clrloc = gl_get_attr_location(prog, "vc");  // vertex color
+
+'''
+
+
+
 SHADER_POST = '''
 	gl_use_program(prog);
 
 '''
 
-HELPER_FUNCS = '''
+CPU_HELPER_FUNCS = '''
 fn void rotateZ(float *m, float angle) {
 	float c = js_cos(angle);
 	float s = js_sin(angle);
@@ -765,80 +797,24 @@ def has_scripts(ob):
 		if txt: return True
 	return False
 
-BLENDER_SHADER_VCOLORS = '''
-const char* VERTEX_SHADER = `
-attribute vec3 vp;
-uniform mat4 P;
-uniform mat4 V;
-uniform mat4 M;
-uniform vec3 T;
-attribute vec3 vc;
-varying vec3 VC;
-void main(void){
-	gl_Position=P*V*M*vec4(vp,1.);
-	VC=vc+(T*255.0);
-}
-`;
-
-const char* FRAGMENT_SHADER = `
-precision mediump float;
-varying vec3 VC;
-void main(void){
-	gl_FragColor=vec4(VC*(1.0/255.0),1.0);
-}
-`;
-
-'''
-
-
-# VVS vertex view space
-BLENDER_SHADER_FLAT = '''
-const char* VERTEX_SHADER = `
-attribute vec3 vp;
-uniform mat4 P;
-uniform mat4 V;
-uniform mat4 M;
-uniform vec3 T;
-varying vec3 VVS;
-varying vec3 VC;
-void main(void){
-	VVS=(M*V*vec4(vp,1.0)).xyz;
-	gl_Position=P*V*M*vec4(vp,1.);
-	VC=T;
-}
-`;
-
-const char* FRAGMENT_SHADER = `
-#extension GL_OES_standard_derivatives:enable
-precision mediump float;
-varying vec3 VVS;
-varying vec3 VC;
-void main(void){
-	vec3 U=dFdx(VVS);
-	vec3 V=dFdy(VVS);
-	vec3 N=normalize(cross(U,V));
-	vec3 f=vec3(1.1,1.1,1.1)*N.z;
-	gl_FragColor=vec4( (VC+(N*0.2))*f ,1.0);
-}
-`;
-
-'''
-#	vec3 f=vec3(1,1,1)*N.z;
-
-
 
 
 def blender_to_c3(world, use_vertex_colors=False):
-	if use_vertex_colors:
-		shader = BLENDER_SHADER_VCOLORS
-	else:
-		shader = BLENDER_SHADER_FLAT
 	data = [
-		SHADER_HEADER,
-		shader,
 		DEBUG_CAMERA,
-		HELPER_FUNCS,
 	]
+
+	if USE_CPU_XFORM:
+		data += [
+			SHADER_HEADER_CPU,
+			libzader.gen_shaders(libzader.VSHADER_CPU_XFORM),
+			CPU_HELPER_FUNCS,
+		]
+	else:
+		data += [
+			SHADER_HEADER_GPU,
+			libzader.gen_shaders(mode='C3'),
+		]
 
 	if world.c3_script:
 		data.append(world.c3_script.as_string())
@@ -958,8 +934,12 @@ def blender_to_c3(world, use_vertex_colors=False):
 		'fn void main() @extern("main") @wasm {',
 		'	gl_init(800, 600);',
 		#'	view_matrix[14] = view_matrix[14] -3.0;',
-		SHADER_SETUP,
 	]
+	if USE_CPU_XFORM:
+		main.append(SHADER_SETUP_CPU)
+	else:
+		main.append(SHADER_SETUP_GPU)
+
 	for ln in setup:
 		main.append('\t' + ln)
 	main.append(SHADER_POST)
@@ -1271,11 +1251,19 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 	for vec in ob.matrix_local:
 		mat += [str(v) for v in vec]
 
+	if USE_CPU_XFORM:
+		data += [
+			'int %s_vbuff;' % name,
+			'float[] %s_mat={%s};' %(name,','.join(mat)),
+		]
+	else:
+		data += [
+			'int %s_vbuff;' % name,
+			'float[3] %s_pos = {%s};' %(name,','.join( [str(v) for v in ob.location] )),
+			'float[3] %s_rot = {%s};' %(name,','.join( [str(v) for v in ob.rotation_euler] )),
+			'float[3] %s_scl = {%s};' %(name,','.join( [str(v) for v in ob.scale] )),
+		]
 
-	data += [
-		'int %s_vbuff;' % name,
-		'float[] %s_mat={%s};' %(name,','.join(mat)),
-	]
 	if use_vertex_colors:
 		data.append(
 		'int %s_cbuff;' % name
@@ -1362,16 +1350,18 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 			setup += [
 				'gl_buffer_element(%s, INDICES_%s.len, INDICES_%s);' %(mirror, sname,sname),
 			]
-		
-	draw = [
-		'gl_bind_buffer(%s_vbuff);' % name,
-		#'gl_vertex_attr_pointer(posloc, 3);',
-		#'gl_enable_vertex_attr_array(posloc);',
-		'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
-		#'gl_bind_buffer_element(%s_ibuff);' % name,
-		#'gl_draw_triangles( INDICES_%s.len );' % sname,
-		#'gl_draw_triangles( %s );' % num_i,
-	]
+	if USE_CPU_XFORM:
+		draw = [
+			'gl_bind_buffer(%s_vbuff);' % name,
+			'gl_uniform_mat4fv(mloc, %s_mat);' % name,  ## update object matrix uniform
+		]
+	else:
+		draw = [
+			'gl_bind_buffer(%s_vbuff);' % name,
+			'gl_uniform_3fv(mploc, &%s_pos);' % name,  ## update object position
+			'gl_uniform_3fv(msloc, &%s_scl);' % name,  ## update object scale
+			'gl_uniform_3fv(mrloc, &%s_rot);' % name,  ## update object rotation
+		]
 
 	if len(indices_by_mat) > 1:
 		needs_upload = False
@@ -1414,7 +1404,7 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 						'	eyes_x=(js_rand()-0.5)*0.05;',
 						'	eyes_y=(js_rand()-0.5)*0.01;',
 
-						'	rotateZ(%s_mat, eyes_x*2);' %name,
+						#'	rotateZ(%s_mat, eyes_x*2);' %name,
 
 						#'	gl_trans(%s_%s_ibuff, (js_rand()-0.5)*0.05,(js_rand()-0.5)*0.01,0);' % (name,midx),
 						#'	gl_trans(%s_%s_ibuff, eyes_x,eyes_y,0);' % (name,midx),
