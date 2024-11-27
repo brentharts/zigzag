@@ -89,8 +89,14 @@ void main(void){
 
 def gen_shaders(vshader=VSHADER_GPU_XFORM, fshader=FSHADER, mode='C3', webgl=True):
 	if webgl:
+		if 'precision mediump float;' not in fshader:
+			fshader = 'precision mediump float;\n' + fshader
 		if '#extension GL_OES_standard_derivatives:enable' not in fshader:
 			fshader = '#extension GL_OES_standard_derivatives:enable\n' + fshader
+
+	if 'xform(' in vshader:
+		vshader = GLSL_XFORM + vshader
+
 	if mode.upper()=='ZIG':
 		o = [
 			'const VERTEX_SHADER =',
