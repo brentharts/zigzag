@@ -65,6 +65,7 @@ if bpy:
 	bpy.types.World.zig_script = bpy.props.PointerProperty(name="Zig global script", type=bpy.types.Text)
 	bpy.types.World.rust_script = bpy.props.PointerProperty(name="Rust global script", type=bpy.types.Text)
 	bpy.types.World.javascript_script = bpy.props.PointerProperty(name="Javascript global script", type=bpy.types.Text)
+	bpy.types.World.after_export_script = bpy.props.PointerProperty(name="After export Python script", type=bpy.types.Text)
 
 	bpy.types.Object.c3 = lambda s: _wrap_c3(s)
 	bpy.types.Object.c3_script = bpy.props.PointerProperty(name="C3 object script", type=bpy.types.Text)
