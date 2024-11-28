@@ -93,6 +93,7 @@ else:
 	)
 
 import learn_c3
+import c3d
 RUSTC = None
 if sys.platform == 'win32':
 	C3 = os.path.join(_thisdir,'c3/c3c.exe')  ## latest unstable
@@ -131,13 +132,6 @@ class ObjectPopup(QWidget):
 	def mousePressEvent(self, ev):
 		self.hide()
 
-
-C3_EXTERNS = '''
-extern fn float js_sin(float a);
-extern fn float js_cos(float a);
-extern fn float js_rand();
-extern fn int   js_eval(char*ptr);
-'''
 
 ZIG_EXTERNS = '''
 extern fn js_rand() f32;
@@ -260,6 +254,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		pop.onclicked = lambda evt: pop.hide()
 		self._prev_err = None
 		self._prev_test = None
+		self._prev_com_txt = None
 
 		self.ob_popup = wid = ObjectPopup(self)
 		wid.move(200,200)
@@ -476,7 +471,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self._prev_test = c3
 
 		tmp = '/tmp/__tmp__.c3'
-		header = C3_EXTERNS
+		header = c3d.C3_EXTERNS + c3d.C3_VIRT_OBJ
 		if world_script:
 			header += world_script
 		header_lines = len(header.splitlines())
@@ -579,6 +574,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		zig_world_script = None
 
 		txt = self.editor.toPlainText()
+		text_is_updated = self._prev_com_txt != txt
+		self._prev_com_txt = txt
+
 		updates = 0
 		for ln in txt.splitlines():
 			if c3_script is not None:
@@ -588,7 +586,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 						self.parse_c3( '\n'.join(c3_script), world_script=c3_world_script )
 					else:
 						c3_world_script = '\n'.join(c3_script)
-						if self.parse_c3( c3_world_script ):
+						if text_is_updated and self.parse_c3( c3_world_script ):
 							self.check_c3(c3_world_script)
 
 					c3_script = None
@@ -596,12 +594,13 @@ class ZigZagEditor( MegasolidCodeEditor ):
 					c3_script.append(ln)
 			elif zig_script is not None:
 				if ln == "'''":
-					if zig_script[0].endswith('{'):
-						zig_script.append('}')
-						self.parse_zig( '\n'.join(zig_script), world_script=zig_world_script )
-					else:
-						zig_world_script = '\n'.join(zig_script)
-						self.parse_zig(zig_world_script)
+					if text_is_updated:
+						if zig_script[0].endswith('{'):
+							zig_script.append('}')
+							self.parse_zig( '\n'.join(zig_script), world_script=zig_world_script )
+						else:
+							zig_world_script = '\n'.join(zig_script)
+							self.parse_zig(zig_world_script)
 					zig_script = None
 				else:
 					zig_script.append(ln)
@@ -636,7 +635,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 				if ln.count(sym)==1:
 					cmd = ln.split(sym)[-1]
 					if cmd.startswith('.c3.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
-						c3_script = ['fn void __object_script__(){']
+						c3_script = [
+							'fn void __object_script__(){',
+							'	Object3D self;',
+						]
 						c3_scripts[name] = c3_script
 					elif cmd.startswith('.zig.script') and '=' in cmd and cmd.split('=')[-1].strip().endswith("'''"):
 						zig_script = ['fn __object_script__() void {']
