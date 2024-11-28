@@ -980,7 +980,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		py = []
 		blends = []
 
-		has_c3 = has_zig = has_rust = False
+		has_c3 = has_zig = has_rust = has_js = False
 		if '.rust.script' in txt:
 			txt = txt.replace('.rust.script','.rust().script')
 			has_rust = True
@@ -990,6 +990,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if '.c3.script' in txt:
 			txt = txt.replace('.c3.script','.c3().script')
 			has_c3 = True
+		if '.javascript.script' in txt:
+			txt = txt.replace('.javascript.script','.javascript().script')
+			has_js = True
 
 		if has_c3 and has_zig:
 			print('WARN: c3 and zig scripts at the same time are not yet supported')
@@ -1462,7 +1465,26 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		btn.clicked.connect(lambda e:self.helper_zig(sym) )
 		box.addWidget(btn)
 
+		btn = QPushButton('JS')
+		btn.setFixedWidth(32)
+		btn.clicked.connect(lambda e:self.helper_js(sym) )
+		box.addWidget(btn)
+
 		self.ob_popup.show()
+
+	def helper_js(self, sym):
+		self.ob_popup.hide()
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = "%s.javascript.script = '''" % sym
+				o.append(ln)
+				o.append('')
+				o.append("'''")
+			else:
+				o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
 
 	def helper_c3(self, sym):
 		self.ob_popup.hide()
@@ -1615,6 +1637,17 @@ class BlendWrap:
 					self.ob.rust_script = txt
 		return _wrap_rust(bpy.data.worlds[0])
 
+	def javascript(self):
+		class _wrap_js:
+			def __init__(self, ob):
+				self.__dict__['ob'] = ob
+			def __setattr__(self, name, value):
+				if name=='script':
+					txt = bpy.data.texts.new(name=name+'.js')
+					txt.from_string(value)
+					self.ob.javascript_script = txt
+		return _wrap_js(bpy.data.worlds[0])
+
 	def add(self, ob):
 		bpy.data.scenes[0].collection.objects.link(ob)
 		self.objects.append(ob)
@@ -1622,60 +1655,6 @@ class BlendWrap:
 '''
 
 
-
-
-
-LEARN_C3 = [
-"""
-.c3.script = '''
-
-fn void onclick( int x, int y ) @extern("onclick") @wasm {
-	js_eval(`
-		window.alert("hello click")
-	`);
-}
-
-'''
-
-""",
-
-]
-
-LEARN_ZIG = [
-"""
-.zig.script = r'''
-
-export fn onclick( x:i32, y:i32 ) void {
-	js_eval(
-		"window.alert('hello click')"
-	);
-	// Zig is super strict, if x and y are not used in the function,
-	// you will get: `Error: unused function parameter`
-	// An ugly way to workaround this is to have this simple statement
-	_=x+y;
-	// note: the Zig compiler will optimize away `_=x+y`
-}
-'''
-""",
-
-]
-
-LEARN_RUST = [
-"""
-.rust.script = r'''
-
-#[no_mangle]
-pub fn onclick( _x:i32, _y:i32 ) {
-	unsafe{
-		js_eval(
-			"window.alert('hello click')\\0".as_ptr()
-		);
-	}
-}
-'''
-""",
-
-]
 
 
 class LearnZig(QWidget):
@@ -1793,6 +1772,7 @@ class Window(QWidget):
 		self.hide()
 
 	def learn_c3(self):
+		from liblearnzag import LEARN_C3
 		w = self.blendgen("🐵")
 		w.editor.textCursor().insertText(choice(LEARN_C3).strip())
 		learn_wasm = ['wasm1.md', 'wasm2.md', 'wasm3.md']
@@ -1800,11 +1780,13 @@ class Window(QWidget):
 		self.megasolid = w
 
 	def learn_zig(self):
+		from liblearnzag import LEARN_ZIG
 		w = self.blendgen("🐱", use_learn_zig=True)
 		w.editor.textCursor().insertText(choice(LEARN_ZIG).strip())
 		self.megasolid = w
 
 	def learn_rust(self):
+		from liblearnzag import LEARN_RUST
 		w = self.blendgen("👽", use_learn_rust=True)
 		w.editor.textCursor().insertText(choice(LEARN_RUST).strip())
 		self.megasolid = w
