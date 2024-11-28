@@ -629,7 +629,10 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 
 	jtmp = '/tmp/c3api.js'
 	#jsapi = zigzag.JS_API_HEADER + JS_MINI_GL
-	jsapi = libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(C3_ZAG_INIT)
+	methods = C3_ZAG_INIT
+	if world.javascript_script:
+		methods += '\n' + world.javascript_script.as_string()
+	jsapi = libwebzag.JS_API_HEADER + libwebzag.gen_webgl_api(methods)
 	jsapi = minjs(jsapi)
 	open(jtmp,'w').write(jsapi)
 	cmd = [GZIP, '--keep', '--force', '--verbose', '--best', jtmp]
@@ -854,6 +857,16 @@ def blender_to_c3(world, use_vertex_colors=False):
 							prop_updates[prop]=True
 					if 'self.matrix' in s:
 						s = s.replace('self.matrix', '%s_mat' % sname)
+					if 'self.rotation.x' in s:
+						s = s.replace('self.rotation.x', '%s_rot[0]' % sname)
+					if 'self.rotation.y' in s:
+						s = s.replace('self.rotation.y', '%s_rot[1]' % sname)
+					if 'self.rotation.z' in s:
+						s = s.replace('self.rotation.z', '%s_rot[2]' % sname)
+
+					if 'self.rotation' in s:
+						s = s.replace('self.rotation', '%s_rot' % sname)
+
 					draw.append( s )
 
 
