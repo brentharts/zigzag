@@ -64,6 +64,7 @@ if bpy:
 	bpy.types.World.c3_script = bpy.props.PointerProperty(name="C3 global script", type=bpy.types.Text)
 	bpy.types.World.zig_script = bpy.props.PointerProperty(name="Zig global script", type=bpy.types.Text)
 	bpy.types.World.rust_script = bpy.props.PointerProperty(name="Rust global script", type=bpy.types.Text)
+	bpy.types.World.javascript_script = bpy.props.PointerProperty(name="Javascript global script", type=bpy.types.Text)
 
 	bpy.types.Object.c3 = lambda s: _wrap_c3(s)
 	bpy.types.Object.c3_script = bpy.props.PointerProperty(name="C3 object script", type=bpy.types.Text)
@@ -694,8 +695,9 @@ def alien():
 	bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
 
 	rig['tongue'].parent = rig['head']
-	#bpy.context.view_layer.objects.active = rig['head']
-	#rig['head'].select_set(True)
+	rig['tongue'].select_set(False)
+	bpy.context.view_layer.objects.active = rig['head']
+	rig['head'].select_set(True)
 	#bpy.ops.object.join()
 
 	return rig['head']
