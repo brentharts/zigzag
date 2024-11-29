@@ -494,8 +494,14 @@ def blender_to_c3(world, use_vertex_colors=False):
 			libzader.gen_shaders(mode='C3'),
 		]
 
+	has_onload = has_ondraw = False
 	if world.c3_script:
-		data.append(world.c3_script.as_string())
+		c = world.c3_script.as_string()
+		data.append(c)
+		if 'fn void onload(' in c:
+			has_onload = True
+		if 'fn void ondraw(' in c:
+			has_ondraw = True
 
 	setup = []
 	draw = []
@@ -633,6 +639,8 @@ def blender_to_c3(world, use_vertex_colors=False):
 	main.append(SHADER_POST)
 	#main.append('update();')
 	#main.append('js_set_entry(&update);')
+	if has_onload:
+		main.append('	onload();')
 	main.append('}')
 
 	update = [
@@ -646,6 +654,8 @@ def blender_to_c3(world, use_vertex_colors=False):
 	]
 	for ln in draw:
 		update.append('\t'+ln)
+	if has_ondraw:
+		update.append('ondraw(delta_time);')
 	update.append('}')
 
 	return data + update + main
