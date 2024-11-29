@@ -21,8 +21,11 @@ self.rotation.z += 0.01;
 
 txt = bpy.data.texts.new(name='after_export.py')
 txt.from_string('''
-print(wasm)
-zag.bytes_to_bricks(wasm)
+#print(wasm)
+#zag.bytes_to_bricks(wasm)
+for i in range(100):
+	c = genchar()
+	print(c)
 ''')
 
 """,
