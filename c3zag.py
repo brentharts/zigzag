@@ -447,7 +447,11 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 	if 'after_export.py' in bpy.data.texts:
 		py += '\n' + bpy.data.texts['after_export.py'].as_string()
 	if py.strip():
-		scope = {'zag':libgenzag, 'wasm':wa, 'out':out, 'js':jsapi, 'bpy':bpy, 'math':math, 'random':random, 'uniform':uniform, 'choice':choice}
+		scope = {
+			'zag':libgenzag, 'wasm':wa, 'out':out, 'js':jsapi, 'bpy':bpy, 'math':math, 
+			'random':random, 'uniform':uniform, 'choice':choice,
+			'genchar' : libgenzag.GenChar(wa),
+		}
 		exec(py, scope, scope)
 
 
