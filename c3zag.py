@@ -628,11 +628,11 @@ def blender_to_c3(world, use_vertex_colors=False):
 		main.append('\t' + ln)
 	main.append(SHADER_POST)
 	#main.append('update();')
-	main.append('js_set_entry(&update);')
+	#main.append('js_set_entry(&update);')
 	main.append('}')
 
 	update = [
-		'fn void update() @extern("update") @wasm {',
+		'fn void update(float delta_time) @extern("update") @wasm {',
 		#'	gl_enable("DEPTH_TEST");',
 		#'	gl_depth_func("LEQUAL");',
 		#'	gl_viewport(0,0,800,600);',
