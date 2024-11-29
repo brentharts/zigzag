@@ -3,6 +3,8 @@ extern fn float js_sin(float a);
 extern fn float js_cos(float a);
 extern fn float js_rand();
 extern fn int   js_eval(char*ptr);
+extern fn char genchar() @extern("genchar");
+extern fn void console_log(int c) @extern("console_log");
 '''
 
 C3_VIRT_OBJ = '''
@@ -145,11 +147,14 @@ fn void main() @extern("main") @wasm {
 '''
 
 WASM_MINI_GL = '''
+extern fn char genchar() @extern("genchar");
+extern fn void console_log(int c) @extern("console_log");
+
 extern fn void mesh_deform(ichar *ptr, int sz);
 //extern fn void mesh_deform(short *ptr, int sz);
 
-def Entry = fn void();
-extern fn void js_set_entry(Entry entry);
+//def Entry = fn void();
+//extern fn void js_set_entry(Entry entry);
 
 
 extern fn void gl_init(int w, int h);
@@ -223,7 +228,7 @@ JS_MOD_API_TODO = '''
 
 #JS_MINI_GL = 'class api {' + zigzag.JS_API_PROXY + '''
 
-C3_ZAG_INIT = '''
+DEPRECATED = '''
 	js_set_entry(a){
 		this.entryFunction=this.wasm.instance.exports.__indirect_function_table.get(a);
 		const f=(ts)=>{
@@ -238,8 +243,15 @@ C3_ZAG_INIT = '''
 		});
 	}
 
+'''
+
+C3_ZAG_INIT = '''
+	console_log(a){console.log(a)}
+
 	reset(wasm,id,bytes){
 		this.wasm=wasm;
+		this.gby=new Uint8Array(bytes);
+		this.gbi=0;
 		this.canvas=document.getElementById(id);
 		this.canvas.onclick=this.onclick.bind(this);
 		this.gl=this.canvas.getContext('webgl');
@@ -251,7 +263,23 @@ C3_ZAG_INIT = '''
 		this.locs=[];
 		//this.mods=[{op:"mod_rand",value:0.1}];
 		this.mods=[];
+		this.update=this.wasm.instance.exports.update;
 		this.wasm.instance.exports.main();
+		const f=(ts)=>{
+			this.dt=(ts-this.prev)/1000;
+			this.prev=ts;
+			this.update(this.dt);
+			window.requestAnimationFrame(f)
+		};
+		window.requestAnimationFrame((ts)=>{
+			this.prev=ts;
+			window.requestAnimationFrame(f)
+		});
+	}
+
+	genchar(){
+		if(this.gbi>=this.gby.length)this.gbi=0;
+		return this.gby[this.gbi++]
 	}
 
 	onclick(e){
