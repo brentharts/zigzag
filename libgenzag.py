@@ -110,6 +110,110 @@ if bpy:
 				row = box.row()
 				row.prop(mat, 'scale')
 
+def mkcube(pos,scl,clr):
+	ob = new_mesh('cube')
+	if len(pos)==2:
+		x,y = pos
+		pos = [x,0,y]
+	if len(scl)==2:
+		x,y = scl
+		scl = [x,y,y]
+	ob.location = pos
+	ob.scale = scl
+	color = [v / 255 for v in clr]
+	ob.color = color
+	return ob
+
+def bytes_to_bricks_simple(data, max=512):
+	pos = [0,0,0]
+	scl = [30, 15,15]
+	clr = [200,20,20, 255]
+	n = 0
+	rows = 0
+	X = 0
+	bricks = []
+	for c in data:
+		clr[0] = c
+		ob = mkcube(pos,scl,clr)
+		bricks.append(ob)
+		if len(bricks) >= max:
+			break
+		pos[0] += 32
+		n +=1
+
+		if (n==60):
+			if ( rows % 2):
+				pos[0] = X
+			else:
+				pos[0] = X+7
+			
+			pos[2] += 17
+			n = 0
+			rows +=1
+		
+		if (rows >= 6):
+			break
+	return bricks
+
+def bytes_to_bricks(data, max=512):
+	pos = [0,0]
+	#scl = [30, 15]
+	scl = [15, 7.5]
+	bclr = [200,20,20,0xFF]
+	rows = n = X = 0
+	bricks = []
+	for c in data:
+		ob = None
+		if (rows <= 6):
+			grout = [220,220,220,0xFF]
+			if (rows <= 5):
+				if (rows > 3):
+					grout = [180,180,180,0xFF]				
+				#if (c > 128):
+				#	#ob = mkcube( [pos[0]-1, pos[1]-2], [30,17], grout)
+				#	ob = mkcube( [pos[0]-1, pos[1]-2], [7,8], grout)
+				if (c < 64):
+					ob = mkcube([pos[0]+1, pos[1]-2], [17,8], grout)
+				if ob:
+					ob.scale.y *= 0.85
+					ob.location.y += 1
+			if (c > 32 and c < 200):
+				if (c < 128):
+					#bclr[0] = c + 100
+					if c < 70:
+						bclr[0] = c + 180
+					elif (c > 80 and c < 90):
+						bclr[0] = c + 100
+					else:
+						if n % 2:
+							bclr[0] = c * 2
+						else:
+							bclr[0] = c + 50
+				else:
+					bclr[0] = c
+			if (c >= 1):
+				# draw brick
+				ob = mkcube(pos, scl, bclr)
+				bricks.append(ob)
+				if len(bricks) >= max:
+					break
+			pos[0] += 32;
+		else:
+			break
+		n += 1
+		if (n==60):
+			if ( rows % 2):
+				pos[0] = X
+			else:
+				pos[0] = X+7
+			
+			pos[1] += 17
+			n = 0
+			rows +=1
+		
+		if (rows >= 6):
+			break
+
 
 def smaterial(name, color):
 	if name not in bpy.data.materials:
@@ -1089,3 +1193,8 @@ if __name__=='__main__':
 		if 'Cube' in bpy.data.objects:
 			bpy.data.objects.remove( bpy.data.objects['Cube'] )
 		alien()
+
+	elif '--bytes-to-bricks' in sys.argv:
+		if 'Cube' in bpy.data.objects:
+			bpy.data.objects.remove( bpy.data.objects['Cube'] )
+		bytes_to_bricks(open('/tmp/test-c3.opt.wasm','rb').read())
