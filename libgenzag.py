@@ -110,6 +110,18 @@ if bpy:
 				row = box.row()
 				row.prop(mat, 'scale')
 
+
+class GenChar:
+	def __init__(self, bytes):
+		self.bytes = bytes
+		self.index = 0
+	def __call__(self):
+		if self.index >= len(self.bytes): self.index = 0
+		c = self.bytes[self.index]
+		self.index += 1
+		return c
+
+
 def mkcube(pos,scl,clr):
 	ob = new_mesh('cube')
 	if len(pos)==2:
