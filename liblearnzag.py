@@ -8,6 +8,10 @@ fn void onclick( int x, int y ) @extern("onclick") @wasm {
 	js_eval(`
 		window.alert("hello click")
 	`);
+	for (int i=0; i<100; i++){
+		int c = genchar();
+		console_log(c);
+	}
 }
 
 '''
