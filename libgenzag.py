@@ -57,9 +57,12 @@ def _set_clr(self, v):
 if bpy:
 	bpy.types.Object.rotation = property(_get_rot, _set_rot)
 	bpy.types.Object.position = property(_get_pos, _set_pos)
+	bpy.types.Object.noise = bpy.props.FloatVectorProperty()
+
 	bpy.types.Material.color  = property(_get_clr, _set_clr)
 	bpy.types.Material.position = bpy.props.FloatVectorProperty()
 	bpy.types.Material.scale = bpy.props.FloatVectorProperty()
+	bpy.types.Material.noise = bpy.props.FloatVectorProperty()
 
 	bpy.types.World.c3_script = bpy.props.PointerProperty(name="C3 global script", type=bpy.types.Text)
 	bpy.types.World.zig_script = bpy.props.PointerProperty(name="Zig global script", type=bpy.types.Text)
@@ -109,6 +112,8 @@ if bpy:
 				row.prop(mat, 'position')
 				row = box.row()
 				row.prop(mat, 'scale')
+				row = box.row()
+				row.prop(mat, 'noise')
 
 
 class GenChar:
