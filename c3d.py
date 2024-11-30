@@ -1,11 +1,4 @@
-C3_EXTERNS = '''
-extern fn float js_sin(float a);
-extern fn float js_cos(float a);
-extern fn float js_rand();
-extern fn int   js_eval(char*ptr);
-extern fn char genchar() @extern("genchar");
-extern fn void console_log(int c) @extern("console_log");
-'''
+
 
 C3_VIRT_OBJ = '''
 struct Vec3 {
@@ -392,3 +385,14 @@ fn void rotateY(float *m, float angle) {
 	m[10] = c*m[10]-s*mv8;
 }
 '''
+
+## this is only used by ZigZagEditor to parse and check code
+C3_EXTERNS = WASM_MINI_GL + '''
+int mploc;
+int mrloc;
+int msloc;
+
+int brick_vbuff;
+int brick_ibuff;
+'''
+##TODO replace brick_ with some API names for prims
