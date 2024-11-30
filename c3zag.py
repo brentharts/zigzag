@@ -358,10 +358,24 @@ def minjs(js):
 	return o.replace('\t', '').replace('\n', '')
 
 def wasm_opt(wasm):
+	'''
+	this is caused by stripping sign+ext which is triggers by:
+	`char a; if (a<128)`
+	[wasm-validator error in function test_c3.onload] unexpected false: all used features should be allowed, on 
+	(i32.extend8_s
+	 (local.get $6)
+	)
+	Fatal: error validating input
+	'''
+
 	o = wasm.replace('.wasm', '.opt.wasm')
 	cmd = ['wasm-opt', '-o',o, '-Oz', wasm]
 	print(cmd)
+	#try:
 	subprocess.check_call(cmd)
+	#except:
+	#	print("WARN: wasm-opt error")
+	#	return wasm
 	return o
 
 def c3_wasm_strip(wasm):
