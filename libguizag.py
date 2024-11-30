@@ -1057,7 +1057,9 @@ class ZigZagEditor( MegasolidCodeEditor ):
 
 			py.append(c)
 		py = '\n'.join(header) + '\n' + ''.join(py)
-		print(py)
+		has_after_export = False
+		if 'after_export.py' in py or '.after_export_script' in py:
+			has_after_export = True
 
 		if sys.platform=='win32':
 			tmp='C:\\tmp\\zigzag_script.py'
@@ -1065,10 +1067,10 @@ class ZigZagEditor( MegasolidCodeEditor ):
 			tmp='/tmp/zigzag_script.py'
 		open(tmp,'wb').write(py.encode('utf-8'))
 		cmd = [codeeditor.BLENDER, '--python-exit-code','1']
-		if export:
+		if export and not has_after_export:
 			cmd.append('--background')
 		else:
-			cmd += ['--window-geometry','640','100', '800','800']
+			cmd += ['--window-geometry','800','100', '800','800']
 
 		if has_rust:
 			cmd += ['--python', rustzagpy, '--', '--import='+tmp ]
