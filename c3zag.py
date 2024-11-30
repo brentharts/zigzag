@@ -419,18 +419,6 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 		out = '%s.html' % name
 	open(out,'w').write('\n'.join(o))
 
-	if preview:
-		if os.path.isfile(FIREFOX):
-			## FireFox has Float16Array support
-			tmp = '/tmp'
-			if sys.platform=='win32':
-				tmp = 'C:\\tmp'
-				out = out.replace('\\', '/')  ## os.path.expanduser on Windows returns backslashes? which confuse firefox
-			subprocess.Popen([FIREFOX, '--profile', tmp, '--new-instance', '-url', out])
-		else:
-			## on linux assume that firefox is default browser
-			webbrowser.open(out)
-
 	if sys.platform != 'win32':
 		os.system('ls -l %s' % out)
 		os.system('ls -lh %s' % out)
@@ -453,6 +441,20 @@ def build_wasm( world, name='test-c3', preview=True, out=None ):
 			'genchar' : libgenzag.GenChar(wa),
 		}
 		exec(py, scope, scope)
+
+	if preview:
+		if os.path.isfile(FIREFOX):
+			## FireFox has Float16Array support
+			tmp = '/tmp'
+			if sys.platform=='win32':
+				tmp = 'C:\\tmp'
+				out = out.replace('\\', '/')  ## os.path.expanduser on Windows returns backslashes? which confuse firefox
+			proc = subprocess.Popen([FIREFOX, '--profile', tmp, '--new-instance', '-url', out])
+		else:
+			## on linux assume that firefox is default browser
+			webbrowser.open(out)
+
+
 
 
 
@@ -506,9 +508,9 @@ def blender_to_c3(world, use_vertex_colors=False):
 	setup = []
 	draw = []
 	for ob in bpy.data.objects:
-		if ob.hide_get(): continue
+		#if ob.hide_get(): continue
 		sname = zigzag.safename(ob)
-		if ob.name not in bpy.context.view_layer.objects:
+		if False and ob.name not in bpy.context.view_layer.objects:
 			print('C3 export skip:', ob)  ## this can happen when linking a .blend and child is missing parent
 			continue
 		else:
@@ -550,9 +552,9 @@ def blender_to_c3(world, use_vertex_colors=False):
 
 					draw.append( s )
 
-
-			if '--disable-sym' in sys.argv:
-				is_symmetric = False
+			is_symmetric = False
+			if '--disable-sym' in sys.argv or len(ob.data.vertices)<=8:
+				pass
 			else:
 				is_symmetric = is_mesh_sym(ob)  ## TODO this should check for a user added mirror mod on x
 			if is_symmetric:
@@ -622,6 +624,7 @@ def blender_to_c3(world, use_vertex_colors=False):
 			a,b,c = mesh_to_c3(ob, mirror=is_symmetric, use_vertex_colors=use_vertex_colors)
 			data  += a
 			setup += b
+			if ob.hide_get(): continue  ## Cube is default hidden prim
 			draw  += c
 
 	main = [
