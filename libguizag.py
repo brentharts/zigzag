@@ -1455,12 +1455,81 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		btn.clicked.connect( lambda e,b=btn: self.helper_rotate(b,sym) )
 		box.addWidget(btn)
 
+		btn = QPushButton('෴')
+		btn.setStyleSheet('font-size:32px')
+		btn.setToolTip("object noise")
+		btn.setFixedWidth(32)
+		btn.clicked.connect( lambda e,b=btn: self.helper_noise(b,sym) )
+		box.addWidget(btn)
+
+
 		pnt = evt.globalPosition().toPoint()
 		x = pnt.x()
 		y = pnt.y()
 		#self.ob_popup.move(evt.pos())
 		self.ob_popup.move(x+20,y+20)
 		self.ob_popup.show()
+
+	def helper_noise(self, button, sym):
+		box = self.ob_popup_layout
+		clear_layout(box)
+
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.noise = [X,Y,Z]' % sym
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+
+		box = self.ob_popup_layout
+		#lab = QLabel('%s.rotation' % sym)
+		#lab.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
+		#box.addWidget(lab)
+		lab = QLabel(sym)
+		lab.setStyleSheet('font-size:32px; color:cyan')
+		box.addWidget(lab)
+
+		if self.active_object:
+			vec = self.active_object['noise']
+		else:
+			vec = [0,0,0]
+
+		bx = QVBoxLayout()
+		con = QWidget()
+		con.setStyleSheet('background-color:rgba(0,0,0, 0.1)')
+		con.setLayout(bx)
+		box.addWidget(con)
+
+
+		sl = new_slider(-100, 100)
+		sl.valueChanged.connect(lambda v: self.on_sym_noise(sym, 0, v, vec))
+		bx.addWidget(sl)
+
+		sl = new_slider(-100, 100)
+		sl.valueChanged.connect(lambda v: self.on_sym_noise(sym, 1, v, vec))
+		bx.addWidget(sl)
+
+		sl = new_slider(-100, 100)
+		sl.valueChanged.connect(lambda v: self.on_sym_noise(sym, 2, v, vec))
+		bx.addWidget(sl)
+
+		self.ob_popup.show()
+
+	def on_sym_noise(self, sym, axis, value, vec):
+		vec[axis] = value / 100
+		o = []
+		for ln in self.editor.toPlainText().splitlines():
+			if ln.startswith(sym):
+				ln = '%s.noise = %s' % (sym, vec)
+			o.append(ln)
+		self.editor.setText('\n'.join(o))
+		self.do_syntax_hl()
+		if self.active_object:
+			self.active_object['noise'] = vec
+		if self.glview:
+			self.glview.update()
+
 
 	def helper_script(self, button, sym):
 		box = self.ob_popup_layout
