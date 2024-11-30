@@ -167,7 +167,7 @@ def bytes_to_bricks_simple(data, brick_width=30, brick_height=15, max=512):
 			break
 	return bricks
 
-def bytes_to_bricks(data, x=-2, y=0, brick_width=30, brick_height=7.5, brick_cols=20, bricks_rows=6,  max=512):
+def bytes_to_bricks(data, x=-2, y=0, brick_width=0.1, brick_height=0.04, brick_cols=20, bricks_rows=6,  max=512):
 	pos = [x,y]
 	scl = [brick_width, brick_height]
 	bclr = [200,20,20,0xFF]
@@ -1234,4 +1234,4 @@ if __name__=='__main__':
 	elif '--bytes-to-bricks' in sys.argv:
 		if 'Cube' in bpy.data.objects:
 			bpy.data.objects.remove( bpy.data.objects['Cube'] )
-		bytes_to_bricks(open('/tmp/test-c3.opt.wasm','rb').read(), brick_width=0.1, brick_height=0.04)
+		bytes_to_bricks(open('/tmp/test-c3.opt.wasm','rb').read())
