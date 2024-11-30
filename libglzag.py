@@ -1,4 +1,4 @@
-import os, sys, json, subprocess, math
+import os, sys, json, subprocess, math, time
 _thisdir = os.path.split(os.path.abspath(__file__))[0]
 if _thisdir not in sys.path: sys.path.insert(0,_thisdir)
 from random import random, uniform
@@ -25,6 +25,7 @@ def mesh_to_json(ob):
 		'scale': list(ob.scale),
 		'parent':None,
 		'camera':None,
+		'noise':[0,0,0],
 	}
 	if ob.parent:
 		dump['parent']=ob.parent.name
@@ -411,6 +412,25 @@ class Viewer(QOpenGLWidget):
 			#print('MR loc:', loc)
 			rot = [math.radians(r) for r in ob['rotation']]
 			glUniform3fv(loc,1,np.array(rot,dtype=np.float32))
+
+			loc = self.prog.uniformLocation("S")  ## noise seeds
+			if loc > 0:
+				#s = [time.time(), random(), 0]
+				soft_sine = 1.0+(abs( math.sin(time.time()))*0.2)
+				soft_sine_step = round(soft_sine,1)
+				s = [
+					soft_sine_step, 
+					random(), 
+					1.0+abs(math.sin(time.time())), 
+				]
+				#print('noise seeds:', s)
+				glUniform3fv(loc,1,np.array(s,dtype=np.float32))
+
+			loc = self.prog.uniformLocation("N")  ## noise scales xyz
+			if loc > 0:
+				s = ob['noise']
+				glUniform3fv(loc,1,np.array(s,dtype=np.float32))
+
 
 		loc = self.prog.uniformLocation("T")
 		#print('T loc:', loc)
