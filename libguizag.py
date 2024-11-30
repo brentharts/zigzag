@@ -538,8 +538,12 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		#print(paren_messages)
 		if self._prev_err != err:
 			self._prev_err = err
-			msg = '<br/>'.join(error_lines + error_messages + paren_messages)
-			self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:28px')
+			elines = error_lines + error_messages + paren_messages
+			msg = '<br/>'.join(elines)
+			if len(elines) < 20:
+				self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:28px')
+			else:
+				self.popup.setStyleSheet('background-color:black; color:lightgreen; font-size:9px')
 			self.popup.setText(msg)
 			self.popup.adjustSize()
 			self.popup.show()
@@ -977,6 +981,7 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		header = [
 			'import bpy',
 			'if "Cube" in bpy.data.objects: bpy.data.objects.remove( bpy.data.objects["Cube"] )',
+			#HIDDEN_MIN_PRIMS,
 			BLEND_WRAP_CLASS,
 		]
 		py = []
@@ -1105,12 +1110,20 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		self.run_script( export=tmp )
 
 	def __syntax_highlight_post(self, html):
-		print('on_syntax_highlight_post')
-		print(html)
+		#print('on_syntax_highlight_post')
+		#print(html)
+		fsize = 11
+		if self._is_fs:
+			fsize = 16
 		if "<br/>'''<br/>" in html:  ## end of tripple quote
-			html = html.replace("<br/>'''<br/>", "</u><br/>'''<br />")  ## note the extra <br /> white space
-		if "'''<br/>" in html:  ## no white space trick
-			html = html.replace("'''<br/>", "'''<br/><u style='background-color:darkblue'>")
+			html = html.replace("<br/>'''<br/>", "</span><br/>'''<br />")  ## note the extra <br /> white space
+		if "= '''<br/>" in html:  ## no white space after tripple quote, with = before
+			## this helps avoid the issue with inline python in tripple quotes,
+			## like: txt.from_string('''... line breaks...''')
+			html = html.replace("= '''<br/>", "= '''<br/><span style='background-color:black; font-size:%spx'>" % fsize)
+		if "='''<br/>" in html:  ## TODO regex
+			html = html.replace("='''<br/>", "='''<br/><span style='background-color:black; font-size:%spx'>" % fsize)
+
 		print(html)
 		return html
 
@@ -1596,6 +1609,9 @@ QSlider::handle:horizontal {
 	sl.setMaximum(max)
 	return sl
 
+HIDDEN_MIN_PRIMS = '''
+bpy.data.objects['Cube'].hide_set(True)
+'''
 
 BLEND_WRAP_CLASS = '''
 
@@ -1775,8 +1791,13 @@ class Window(QWidget):
 
 	def learn_c3(self):
 		from liblearnzag import LEARN_C3
-		w = self.blendgen("🐵")
-		w.editor.textCursor().insertText(choice(LEARN_C3).strip())
+		tutorial = choice(LEARN_C3).strip()
+		if ord(tutorial[0]) > 8000:
+			w = self.blendgen(tutorial[0])
+			tutorial = tutorial[1:].strip()
+		else:
+			w = self.blendgen("🐵")
+		w.editor.textCursor().insertText(tutorial)
 		learn_wasm = ['wasm1.md', 'wasm2.md', 'wasm3.md']
 		w.learn_c3_widget.load(tag=choice(learn_wasm))
 		self.megasolid = w
