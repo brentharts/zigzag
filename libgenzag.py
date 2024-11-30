@@ -134,6 +134,9 @@ def mkcube(pos,scl,clr):
 	ob.scale = scl
 	color = [v / 255 for v in clr]
 	ob.color = color
+	mtag = ':'.join([str(v) for v in clr])
+	mat = smaterial(mtag, color)
+	ob.data.materials.append(mat)
 	return ob
 
 def bytes_to_bricks_simple(data, brick_width=30, brick_height=15, max=512):
@@ -180,7 +183,7 @@ def bytes_to_bricks(data, x=-2, y=0, brick_width=0.1, brick_height=0.04, brick_c
 		ob = None
 		if rows >= bricks_rows:
 			break
-		print(idx, c)
+		#print(idx, c)
 		grout = [220,220,220,0xFF]
 		cement = [160,170,170,0xFF]
 		if (rows <= 5):
@@ -197,8 +200,8 @@ def bytes_to_bricks(data, x=-2, y=0, brick_width=0.1, brick_height=0.04, brick_c
 				ob.location.y += brick_height/8
 				ob.location.y += y
 		if (c > 32 and c < 200):
-			if (c < 128):
-				#bclr[0] = c + 100
+			#if (c < 128):  ## bug in C3 with char < 128
+			if (c < 127):
 				if c < 70:
 					bclr[0] = c + 180
 				elif (c > 80 and c < 90):
@@ -1182,9 +1185,21 @@ def poop( nurb_eyes=False ):
 
 def brick():
 	#ob = bpy.data.objects['Cube']
-	ob = new_mesh('cube')
+	#ob = new_mesh('cube')
+	## note the default cube size in blender is 2, not 1
+	ob = new_mesh('grid', x_subdivisions=8, y_subdivisions=8, size=2)
 	ob.name = 'brick'
 	ob.data.name='brick'
+
+	mod = ob.modifiers.new(name='extrude', type="SOLIDIFY")
+	mod.offset=0
+	mod.thickness = 2
+
+	ob.rotation_euler.x = math.pi / 2
+
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+	bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+
 	ob.scale = [0.1, 0.04, 0.04]
 	#ob.hide_set(True)
 	ob.select_set(True)
