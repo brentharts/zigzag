@@ -136,9 +136,9 @@ def mkcube(pos,scl,clr):
 	ob.color = color
 	return ob
 
-def bytes_to_bricks_simple(data, max=512):
+def bytes_to_bricks_simple(data, brick_width=30, brick_height=15, max=512):
 	pos = [0,0,0]
-	scl = [30, 15,15]
+	scl = [brick_width, brick_height,brick_height]
 	clr = [200,20,20, 255]
 	n = 0
 	rows = 0
@@ -150,16 +150,16 @@ def bytes_to_bricks_simple(data, max=512):
 		bricks.append(ob)
 		if len(bricks) >= max:
 			break
-		pos[0] += 32
+		pos[0] += brick_width + (brick_height/6)
 		n +=1
 
 		if (n==60):
 			if ( rows % 2):
 				pos[0] = X
 			else:
-				pos[0] = X+7
+				pos[0] = X+(brick_width/2)
 			
-			pos[2] += 17
+			pos[2] += brick_height + (brick_height/6)
 			n = 0
 			rows +=1
 		
@@ -167,64 +167,80 @@ def bytes_to_bricks_simple(data, max=512):
 			break
 	return bricks
 
-def bytes_to_bricks(data, max=512):
-	pos = [0,0]
-	#scl = [30, 15]
-	scl = [15, 7.5]
+def bytes_to_bricks(data, x=-2, y=0, brick_width=30, brick_height=7.5, brick_cols=20, bricks_rows=6,  max=512):
+	pos = [x,y]
+	scl = [brick_width, brick_height]
 	bclr = [200,20,20,0xFF]
-	rows = n = X = 0
+	gwidth = brick_width + (brick_width / 5)
+	gheight = brick_height + (brick_height / 3)
+	goffset = brick_width / 12
+	rows = n = 0
 	bricks = []
-	for c in data:
+	for idx, c in enumerate(data):
 		ob = None
-		if (rows <= 6):
-			grout = [220,220,220,0xFF]
-			if (rows <= 5):
-				if (rows > 3):
-					grout = [180,180,180,0xFF]				
-				#if (c > 128):
-				#	#ob = mkcube( [pos[0]-1, pos[1]-2], [30,17], grout)
-				#	ob = mkcube( [pos[0]-1, pos[1]-2], [7,8], grout)
-				if (c < 64):
-					ob = mkcube([pos[0]+1, pos[1]-2], [17,8], grout)
-				if ob:
-					ob.scale.y *= 0.85
-					ob.location.y += 1
-			if (c > 32 and c < 200):
-				if (c < 128):
-					#bclr[0] = c + 100
-					if c < 70:
-						bclr[0] = c + 180
-					elif (c > 80 and c < 90):
-						bclr[0] = c + 100
-					else:
-						if n % 2:
-							bclr[0] = c * 2
-						else:
-							bclr[0] = c + 50
-				else:
-					bclr[0] = c
-			if (c >= 1):
-				# draw brick
-				ob = mkcube(pos, scl, bclr)
-				bricks.append(ob)
-				if len(bricks) >= max:
-					break
-			pos[0] += 32;
-		else:
+		if rows >= bricks_rows:
 			break
-		n += 1
-		if (n==60):
-			if ( rows % 2):
-				pos[0] = X
+		print(idx, c)
+		grout = [220,220,220,0xFF]
+		cement = [160,170,170,0xFF]
+		if (rows <= 5):
+			if (rows > 3):
+				grout = [180,180,180,0xFF]				
+				cement = [140,150,150,0xFF]
+			#if (c > 128):
+			#	#ob = mkcube( [pos[0]-1, pos[1]-2], [30,17], grout)
+			#	ob = mkcube( [pos[0]-1, pos[1]-2], [7,8], grout)
+			if (c < 64):
+				ob = mkcube([pos[0]+goffset, pos[1]-(goffset*2)], [gwidth,gheight], cement)
+			if ob:
+				ob.scale.y *= 0.85
+				ob.location.y += brick_height/8
+				ob.location.y += y
+		if (c > 32 and c < 200):
+			if (c < 128):
+				#bclr[0] = c + 100
+				if c < 70:
+					bclr[0] = c + 180
+				elif (c > 80 and c < 90):
+					bclr[0] = c + 100
+				else:
+					if n % 2:
+						bclr[0] = c * 2
+					else:
+						bclr[0] = c + 50
 			else:
-				pos[0] = X+7
+				bclr[0] = c
+		if (c >= 1):
+			# draw brick
+			ob = mkcube(pos, scl, bclr)
+			ob.name = '%s:' % c
+			if c < 30:
+				ob.location.y = (c-128) * brick_width * 0.0025
+			else:
+				ob.location.y = (c-128) * brick_width * 0.01
+			ob.rotation_euler.z = (c-128) * brick_width * 0.008
+			ob.rotation_euler.y = (c-128) * brick_width * 0.005
+			ob.location.y += y
+			bricks.append(ob)
+			if c > 50:
+				p = [pos[0]-(brick_width*1.01), pos[1]]
+				ob = mkcube(p, [brick_width/12, scl[1]], grout)
+				ob.location.y = (c-128) * brick_width * 0.01
+
+			if len(bricks) >= max:
+				break
+		pos[0] += (brick_width*2) + (brick_height/6)
+
+		n += 1
+		if (n >= brick_cols):
+			if ( rows % 2):
+				pos[0] = x
+			else:
+				pos[0] = x+(brick_width/2)
 			
-			pos[1] += 17
+			pos[1] += (brick_height*2) + (brick_height/4)
 			n = 0
 			rows +=1
-		
-		if (rows >= 6):
-			break
 
 
 def smaterial(name, color):
@@ -1164,7 +1180,15 @@ def poop( nurb_eyes=False ):
 
 	return poo
 
-
+def brick():
+	#ob = bpy.data.objects['Cube']
+	ob = new_mesh('cube')
+	ob.name = 'brick'
+	ob.data.name='brick'
+	ob.scale = [0.1, 0.04, 0.04]
+	#ob.hide_set(True)
+	ob.select_set(True)
+	return ob
 
 sym_gen = {
 	'🐵' : monkey,
@@ -1174,6 +1198,7 @@ sym_gen = {
 	'🦍' : gorilla,
 	'👽' : alien,
 	'💩' : poop,
+	'🧱' : brick,
 }
 
 if __name__=='__main__':
@@ -1209,4 +1234,4 @@ if __name__=='__main__':
 	elif '--bytes-to-bricks' in sys.argv:
 		if 'Cube' in bpy.data.objects:
 			bpy.data.objects.remove( bpy.data.objects['Cube'] )
-		bytes_to_bricks(open('/tmp/test-c3.opt.wasm','rb').read())
+		bytes_to_bricks(open('/tmp/test-c3.opt.wasm','rb').read(), brick_width=0.1, brick_height=0.04)
