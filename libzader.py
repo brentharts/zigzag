@@ -36,9 +36,37 @@ mat4 xform(vec3 t,vec3 sc,vec3 r){
 }
 '''
 
+## MP = model position, MS = model scale, MR = model rotation
+## T = tint, S = noise seeds
+## N = noise scale x,y,z
+#float PHI=1.61803398874989484820459; 
+
+VSHADER_GPU_XFORM = '''
+attribute vec3 vp;
+uniform mat4 P,V;
+uniform vec3 MP,MS,MR,T,S,N;
+varying vec3 VVS;
+varying vec3 VC;
+
+float phi=13.0/7.0-0.239;
+float rand(vec3 v,float s){
+	return fract(tan(distance(v.xy*phi,v.xz)*s)*v.x);
+}
+void main(){
+	mat4 x=xform(MP,MS,MR);
+	vec3 v=vec3(
+		vp.x+(rand(vp,S.x)*N.x),
+		vp.y+(rand(vp,S.x)*N.y),
+		vp.z+(rand(vp,S.x)*N.z)
+	);
+	gl_Position=P*V*x*vec4(v,1.0);
+	VVS=(x*V*vec4(vp,1.0)).xyz;
+	VC=T;
+}
+'''
 
 ## MP = model position, MS = model scale, MR = model rotation
-VSHADER_GPU_XFORM = '''
+VSHADER_GPU_XFORM_SIMPLE = '''
 attribute vec3 vp;
 uniform mat4 P,V;
 uniform vec3 MP,MS,MR,T;
