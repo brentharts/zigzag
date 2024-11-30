@@ -36,7 +36,8 @@ struct Brick{
 Brick[120] bricks;
 
 fn void onload(){
-	float n, px, py, sx,sy, x,y, brick_width, brick_height;
+	float px, py, sx,sy, x,y, brick_width, brick_height;
+	char n=0;
 	char r=200;
 	char g=20;
 	char b=20;
@@ -51,6 +52,23 @@ fn void onload(){
 	for (int i=0; i<120; i++){
 		char c = genchar();
 		console_log(c);
+		if (c > 32 && c < 200) {
+			if (c < 127) {
+				if (c < 70) {
+					r = c + 180;
+				} else if (c > 80 && c < 90){
+					r = c + 100;
+				} else {
+					if (n % 2) {
+						r = c * 2;
+					} else {
+						r = c + 50;
+					}
+				}
+			} else {
+				r = c;
+			}
+		}
 		if (c >= 1){
 			bricks[i].clr[0]=r;
 			bricks[i].clr[1]=g;
@@ -62,6 +80,9 @@ fn void onload(){
 			bricks[i].scl[0]=brick_width;
 			bricks[i].scl[1]=brick_height;
 			bricks[i].scl[2]=brick_height;
+
+			bricks[i].rot[2] = (float)(c-128) * brick_width * 0.008f;
+			bricks[i].rot[1] = (float)(c-128) * brick_width * 0.005f;
 
 		}
 
@@ -88,7 +109,7 @@ fn void ondraw(float dt){
 		gl_uniform_3fv(msloc, &bricks[i].scl);
 		gl_uniform_3fv(mrloc, &bricks[i].rot);
 		gl_bind_buffer_element(brick_ibuff);
-		gl_draw_tris_tint( 36, 
+		gl_draw_tris_tint( 960, 
 			bricks[i].clr[0]/255.0f,
 			bricks[i].clr[1]/255.0f,
 			bricks[i].clr[2]/255.0f
@@ -100,9 +121,6 @@ fn void ondraw(float dt){
 txt = bpy.data.texts.new(name='after_export.py')
 txt.from_string('''
 zag.bytes_to_bricks(wasm)
-for i in range(100):
-	c = genchar()
-	print(c)
 ''')
 
 """,
