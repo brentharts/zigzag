@@ -255,6 +255,8 @@ class C3ObjectPanel(bpy.types.Panel):
 		ob = context.active_object
 
 		#self.layout.prop(ob, 'c3_hide')  ## TODO
+		self.layout.prop(ob, 'noise')
+		self.layout.prop(ob, 'anim_noise')
 
 		self.layout.label(text="C3 Object Scripts")
 		self.layout.prop(ob, 'c3_script')
@@ -661,13 +663,14 @@ def blender_to_c3(world, use_vertex_colors=False):
 	main.append('}')
 
 	update = [
-		'fn void update(float delta_time) @extern("update") @wasm {',
+		'fn void update(float delta_time, float soft_sine_time) @extern("update") @wasm {',
 		#'	gl_enable("DEPTH_TEST");',
 		#'	gl_depth_func("LEQUAL");',
 		#'	gl_viewport(0,0,800,600);',
 		#'	gl_clear(0.5,0.5,0.5, 1.0, 1.0);',
 		'	gl_uniform_mat4fv(ploc, proj_matrix);',
 		'	gl_uniform_mat4fv(vloc, view_matrix);',
+		'	if (js_rand() < 0.1f) {s_uni[0]=soft_sine_time+1.0f;}',
 	]
 	for ln in draw:
 		update.append('\t'+ln)
@@ -1076,6 +1079,10 @@ def mesh_to_c3(ob, as_quads=True, mirror=False, use_object_color=False, use_vert
 			'gl_uniform_3fv(mploc, &%s_pos);' % name,  ## update object position
 			'gl_uniform_3fv(msloc, &%s_scl);' % name,  ## update object scale
 			'gl_uniform_3fv(mrloc, &%s_rot);' % name,  ## update object rotation
+
+			'gl_uniform_3fv(sloc, &s_uni);',
+			'gl_uniform_3fv(nloc, &n_uni);',
+
 		]
 
 	if len(indices_by_mat) > 1:
