@@ -25,7 +25,8 @@ def mesh_to_json(ob):
 		'scale': list(ob.scale),
 		'parent':None,
 		'camera':None,
-		'noise':[0,0,0],
+		'noise':list(ob.noise),
+		'anim_noise':list(ob.anim_noise),
 	}
 	if ob.parent:
 		dump['parent']=ob.parent.name
@@ -50,6 +51,9 @@ def mesh_to_json(ob):
 				indices_by_mat[p.material_index]['color']=(r,g,b)
 				if mat.zigzag_object_type != 'NONE':
 					indices_by_mat[p.material_index]['class'] = mat.zigzag_object_type
+
+				indices_by_mat[p.material_index]['noise'] = list(mat.noise)
+				indices_by_mat[p.material_index]['anim_noise'] = list(mat.anim_noise)
 
 			else:
 				r,g,b,a = ob.color
@@ -429,6 +433,11 @@ class Viewer(QOpenGLWidget):
 			loc = self.prog.uniformLocation("N")  ## noise scales xyz
 			if loc > 0:
 				s = ob['noise']
+				glUniform3fv(loc,1,np.array(s,dtype=np.float32))
+
+			loc = self.prog.uniformLocation("A")  ## animated noise scales xyz
+			if loc > 0:
+				s = ob['anim_noise']
 				glUniform3fv(loc,1,np.array(s,dtype=np.float32))
 
 
