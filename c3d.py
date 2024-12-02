@@ -48,7 +48,7 @@ float[] view_matrix = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 
 DEBUG_CAMERA = '''
 float[] proj_matrix = {1.8106600046157837, 0.0, 0.0, 0.0, 0.0, 2.4142134189605713, 0.0, 0.0, 0.0, 0.0, -1.0202020406723022, -1.0, 0.0, 0.0, -2.0202019214630127, 0.0};
-float[] view_matrix = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -5.0, 1.0};
+float[] view_matrix = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -3.0, 1.0};
 '''
 
 
@@ -243,10 +243,12 @@ C3_ZAG_INIT = '''
 
 	reset(wasm,id,bytes){
 		this.wasm=wasm;
+		//this.gby=new Uint8Array(document.body.parentElement.innerHTML+bytes);
 		this.gby=new Uint8Array(bytes);
 		this.gbi=0;
 		this.canvas=document.getElementById(id);
 		this.canvas.onclick=this.onclick.bind(this);
+		//this.gl=this.canvas.getContext('webgl', {preserveDrawingBuffer: true});
 		this.gl=this.canvas.getContext('webgl');
 		this.gl.getExtension("OES_standard_derivatives");
 		this.bufs=[];
@@ -261,7 +263,11 @@ C3_ZAG_INIT = '''
 		const f=(ts)=>{
 			this.dt=(ts-this.prev)/1000;
 			this.prev=ts;
-			this.update(this.dt);
+			//this.update(this.dt, Math.round(Math.abs(Math.sin(performance.now()))*10)/10);
+			//this.update(this.dt, Math.round(Math.abs(Math.sin(performance.now()*0.005))*10)/10);
+			//this.update(this.dt, Math.round(Math.random()*Math.abs(Math.sin(performance.now()*0.005))*10)/10);
+			//this.update(this.dt, Math.sin(performance.now()*0.005))+(Math.random()*Math.random());
+			this.update(this.dt, Math.abs(Math.sin(performance.now()*0.005)) );
 			window.requestAnimationFrame(f)
 		};
 		window.requestAnimationFrame((ts)=>{
@@ -279,6 +285,7 @@ C3_ZAG_INIT = '''
 		console.log("onclick:", e);
 		this.wasm.instance.exports.onclick(e.x,e.y)
 	}
+
 
 '''
 
@@ -324,6 +331,12 @@ int msloc;
 int mrloc;
 int posloc;
 int clrloc;
+
+int nloc;
+int sloc;
+
+float[3] n_uni = {0.1,0.1,0.1};
+float[3] s_uni = {1,1,1};
 '''
 
 SHADER_SETUP_GPU = '''
@@ -340,6 +353,9 @@ SHADER_SETUP_GPU = '''
 	mploc = gl_get_uniform_location(prog, "MP");
 	msloc = gl_get_uniform_location(prog, "MS");
 	mrloc = gl_get_uniform_location(prog, "MR");
+
+	sloc = gl_get_uniform_location(prog, "S");
+	nloc = gl_get_uniform_location(prog, "N");
 
 	posloc = gl_get_attr_location(prog, "vp");  // vertex position
 	clrloc = gl_get_attr_location(prog, "vc");  // vertex color
