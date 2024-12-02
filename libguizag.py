@@ -1659,6 +1659,25 @@ class ZigZagEditor( MegasolidCodeEditor ):
 		if self.glview:
 			self.glview.update()
 
+def new_button(name, style='', size=None, callback=None):
+	btn = QPushButton(name)
+	if size:
+		style += 'font-size:%spx;' % size
+	elif len(name)==1 and ord(name[0]) > 8000:
+		style += 'font-size:32px;'
+		btn.setFixedWidth(40)
+
+	if sys.platform =='linux':
+		for c in name:
+			if ord(c) > 8000:
+				style += 'font-family:Noto Color Emoji;'
+				break
+	if style:
+		btn.setStyleSheet(style)
+	if callback:
+		btn.clicked.connect(callback)
+	return btn
+
 def new_slider(min=0, max=100, color='grey', bgcolor='lightblue'):
 	sl = QSlider()
 	sl.setStyleSheet('''
@@ -2095,33 +2114,15 @@ class Window(QWidget):
 		btn.clicked.connect(self.open_code_editor)
 		self.tools.addWidget(btn)
 
-		btn = QPushButton("🐵")  ## monkey
-		btn.clicked.connect( lambda: self.blendgen("🐵") )
-		self.tools.addWidget(btn)
-
-		btn = QPushButton("🐱")  ## cat
-		btn.clicked.connect( lambda: self.blendgen("🐱") )
-		self.tools.addWidget(btn)
-
-		btn = QPushButton("🐶")  ## dog
-		btn.clicked.connect( lambda: self.blendgen("🐶") )
-		self.tools.addWidget(btn)
-
-		btn = QPushButton("🐻")  ## bear
-		btn.clicked.connect( lambda: self.blendgen("🐻") )
-		self.tools.addWidget(btn)
-
-		btn = QPushButton("🦍")  ## gorilla
-		btn.clicked.connect( lambda: self.blendgen("🦍") )
-		self.tools.addWidget(btn)
-
-		btn = QPushButton("👽")  ## alien
-		btn.clicked.connect( lambda: self.blendgen("👽") )
-		self.tools.addWidget(btn)
-
-		btn = QPushButton("💩")  ## poop
-		btn.clicked.connect( lambda: self.blendgen("💩") )
-		self.tools.addWidget(btn)
+		self.tools.addWidget(new_button("🐵", callback=lambda: self.blendgen("🐵")))
+		self.tools.addWidget(new_button("🐱", callback=lambda: self.blendgen("🐱")))
+		self.tools.addWidget(new_button("🐶", callback=lambda: self.blendgen("🐶")))
+		self.tools.addWidget(new_button("🐻", callback=lambda: self.blendgen("🐻")))
+		self.tools.addWidget(new_button("🦍", callback=lambda: self.blendgen("🦍")))
+		self.tools.addWidget(new_button("👽", callback=lambda: self.blendgen("👽")))
+		self.tools.addWidget(new_button("🐸", callback=lambda: self.blendgen("🐸")))
+		self.tools.addWidget(new_button("👹", callback=lambda: self.blendgen("👹")))
+		self.tools.addWidget(new_button("💩", callback=lambda: self.blendgen("💩")))
 
 		self.tools.addStretch(1)
 
